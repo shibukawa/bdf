@@ -694,7 +694,7 @@ function renderSidebar() {
       form.append(field("Policy", selectInput("f-policy", [["round-robin", "in turn (round-robin)"], ["failover", "the first member (failover)"]], n.policy || "round-robin"), "A printer that does not take the job is skipped for the next member."));
       break;
     case "inbox":
-      form.append(field("A person releases to", picker("to", n.to || [], n.name), "The nodes a person may release to; none chosen: any node."));
+      form.append(field("A person releases to", picker("to", n.to || [], n.name), "The nodes a person may release to; none chosen: any node. An HTTP (pull) node chosen is not one to release to: it lists each job while the inbox holds it, for applications to fetch."));
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long released and discarded items stay shown."));
       break;
     case "archive":

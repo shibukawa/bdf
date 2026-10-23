@@ -40,40 +40,41 @@ func TestExport(t *testing.T) {
 	if got.By != "customer" || got.Subject != SubjectEmail || len(got.Fields) != 1 || len(got.Apps) != 2 {
 		t.Fatalf("export %+v", got)
 	}
-	// an archive sends on what it wrote; a way to the export without an
-	// archive is refused, with the way
+	// an export takes a stocked file, which an archive sends along its to;
+	// any other node, or another of its edges, is refused, with the edge
 	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"out"}}, http.StatusOK)
 	e.node("in", Node{Kind: KindQueue, To: []string{"vault"}}, http.StatusOK)
-	if out := e.node("direct", Node{Kind: KindQueue, To: []string{"out"}}, http.StatusBadRequest); !strings.Contains(string(out), "direct → out") {
-		t.Fatalf("a queue straight to the export: %s", out)
-	}
-	if out := e.node("api", Node{Kind: KindEndpoint, To: []string{"in", "out"}}, http.StatusBadRequest); !strings.Contains(string(out), "api → out") {
-		t.Fatalf("an endpoint straight to the export: %s", out)
+	e.node("seen", Node{Kind: KindSink}, http.StatusOK)
+	for name, n := range map[string]Node{
+		"direct": {Kind: KindQueue, To: []string{"out"}},
+		"api":    {Kind: KindEndpoint, To: []string{"in", "out"}},
+		"conv":   {Kind: KindConvert, To: []string{"out"}},
+		"pick":   {Kind: KindFilter, Otherwise: []string{"out"}},
+		"hold":   {Kind: KindInbox, To: []string{"seen"}, OnError: []string{"out"}},
+	} {
+		if out := e.node(name, n, http.StatusBadRequest); !strings.Contains(string(out), "out (HTTP (pull)) takes a stocked file") || !strings.Contains(string(out), "not "+name) {
+			t.Fatalf("%s to the export: %s", name, out)
+		}
 	}
 	e.node("fan", Node{Kind: KindQueue, To: []string{"vault"}}, http.StatusOK)
 	e.node("api", Node{Kind: KindEndpoint, To: []string{"fan"}}, http.StatusOK)
-	// a change elsewhere that opens such a way is refused too
-	e.node("fan", Node{Kind: KindQueue, To: []string{"vault", "out"}}, http.StatusBadRequest)
-	// a node after the archive that makes a payload of its own, or an
-	// inbox (a release routes anew), starts a way without an archive
-	if out := e.node("conv", Node{Kind: KindConvert, To: []string{"out"}}, http.StatusBadRequest); !strings.Contains(string(out), "conv → out") {
-		t.Fatalf("a convert node to the export: %s", out)
+	// a queue after the archive gets what it wrote, not a stocked file;
+	// the archive still sends that on to the others
+	e.node("after", Node{Kind: KindQueue, To: []string{"seen"}}, http.StatusOK)
+	e.node("after", Node{Kind: KindQueue, To: []string{"seen", "out"}}, http.StatusBadRequest)
+	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"out", "after"}}, http.StatusOK)
+	var typed []TopoNode
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &typed)
+	for _, n := range typed {
+		switch {
+		case n.Name == "out" && (n.Takes != PayloadStocked || len(n.Broken) > 0),
+			n.Name == "vault" && (len(n.Accepts) != 3 || len(n.Broken) > 0 || strings.Join(n.Emits, ",") != "bdf"),
+			n.Name == "after" && strings.Join(n.Emits, ",") != "bdf":
+			t.Fatalf("typing of %s: %+v", n.Name, n)
+		}
 	}
-	if out := e.node("hold", Node{Kind: KindInbox, To: []string{"out"}}, http.StatusBadRequest); !strings.Contains(string(out), "hold → out") {
-		t.Fatalf("an inbox to the export: %s", out)
-	}
-	// a routing node after the archive keeps what it wrote; one that
-	// nothing sends to is a destination of its own
-	e.node("seen", Node{Kind: KindSink}, http.StatusOK)
-	e.node("pick", Node{Kind: KindFilter, Otherwise: []string{"out"}}, http.StatusBadRequest)
-	e.node("pick", Node{Kind: KindFilter, Otherwise: []string{"seen"}}, http.StatusOK)
-	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"out", "pick"}}, http.StatusOK)
-	e.node("pick", Node{Kind: KindFilter, Otherwise: []string{"seen", "out"}}, http.StatusOK)
-	// cutting the archive off from it, it would be a way of its own again
-	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"out"}}, http.StatusBadRequest)
-	e.node("pick", Node{Kind: KindFilter, Otherwise: []string{"seen"}}, http.StatusOK)
 	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"out"}}, http.StatusOK)
-	e.admin("DELETE", "/api/nodes/pick", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/after", nil, http.StatusNoContent)
 	e.admin("DELETE", "/api/nodes/seen", nil, http.StatusNoContent)
 
 	doc := testDoc(t, 2)
@@ -229,7 +230,7 @@ func TestExport(t *testing.T) {
 		}
 	}
 	vault, _ := m.Node(ctx, "vault")
-	if err := m.continueFrom(ctx, d, vault, e.job(1).received(), false, &archiveRef{Node: "vault", Key: d.Result}); err != nil {
+	if err := m.continueFrom(ctx, d, vault, e.job(1).received(), false, &stockRef{Node: "vault", Key: d.Result}); err != nil {
 		t.Fatal(err)
 	}
 	if es := entries(e.as("alice", "GET", "/out/out", nil)); len(es) != 2 {
@@ -248,11 +249,14 @@ func TestExport(t *testing.T) {
 			t.Fatalf("an export among the destinations: %+v", ds)
 		}
 	}
-	// a job routed to it by hand (an inbox released anywhere) gets an
-	// error leg there
+	// a job routed to it by hand, or along a way the graph no longer
+	// has, gets an error leg there
 	r := &routing{job: e.job(1), now: m.now(), payload: e.job(1).received()}
 	m.routeExport(ctx, r, "out", "hold")
-	if len(r.legs) != 1 || r.legs[0].State != LegError || !strings.Contains(r.legs[0].Error, "without an archive") {
+	r.stock = &stockRef{Node: "vault", Key: "x"}
+	m.route(ctx, r, "out", "in", 0)
+	if len(r.legs) != 2 || r.legs[0].State != LegError || !strings.Contains(r.legs[0].Error, "not from an inbox or an archive") ||
+		r.legs[1].State != LegError || !strings.Contains(r.legs[1].Error, "takes stocked; this is bdf from in") {
 		t.Fatalf("routed by hand: %+v", r.legs)
 	}
 
@@ -550,48 +554,49 @@ func TestOAuthCode(t *testing.T) {
 	}
 }
 
-// A filter after the archive sends what it wrote to one export or
-// another by the metadata: the routing keeps what the archive wrote.
+// A filter in front of the archives picks the export a document is
+// listed at: each archive sends what it wrote, a stocked file, to its
+// own. A filter after an archive is refused before an export: what it
+// sends on is the document, not a stocked file.
 func TestExportAfterFilter(t *testing.T) {
 	e := newEnv(t, withViewers)
-	store := "bbolt:" + filepath.ToSlash(filepath.Join(t.TempDir(), "vault.db"))
+	dir := t.TempDir()
+	store := func(name string) string { return "bbolt:" + filepath.ToSlash(filepath.Join(dir, name+".db")) }
 	e.node("invoices", Node{Kind: KindExport, By: "customer"}, http.StatusOK)
 	e.node("receipts", Node{Kind: KindExport, By: "customer"}, http.StatusOK)
 	e.node("seen", Node{Kind: KindSink}, http.StatusOK)
-	e.node("by-type", Node{Kind: KindFilter, Otherwise: []string{"seen"}}, http.StatusOK)
-	e.node("vault", Node{Kind: KindArchive, Store: store, To: []string{"by-type"}}, http.StatusOK)
-	e.node("by-type", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"type": "^invoice$"}}, To: []string{"invoices"}},
-		{Match: Match{Meta: map[string]string{"type": "^receipt$"}}, To: []string{"receipts"}}}, Otherwise: []string{"seen"}}, http.StatusOK)
-	e.node("in", Node{Kind: KindQueue, To: []string{"vault"}}, http.StatusOK)
+	e.node("vault-i", Node{Kind: KindArchive, Store: store("i"), To: []string{"invoices"}}, http.StatusOK)
+	e.node("vault-r", Node{Kind: KindArchive, Store: store("r"), To: []string{"receipts"}}, http.StatusOK)
+	e.node("by-type", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"type": "^invoice$"}}, To: []string{"vault-i"}},
+		{Match: Match{Meta: map[string]string{"type": "^receipt$"}}, To: []string{"vault-r"}}}, Otherwise: []string{"seen"}}, http.StatusOK)
+	e.node("in", Node{Kind: KindQueue, To: []string{"by-type"}}, http.StatusOK)
+	e.node("late", Node{Kind: KindFilter, Otherwise: []string{"seen"}}, http.StatusOK)
+	e.node("vault-i", Node{Kind: KindArchive, Store: store("i"), To: []string{"invoices", "late"}}, http.StatusOK)
+	if out := e.node("late", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"type": "^invoice$"}}, To: []string{"receipts"}}}}, http.StatusBadRequest); !strings.Contains(string(out), "not late (filter)") {
+		t.Fatalf("a filter after an archive: %s", out)
+	}
 	doc := testDoc(t, 1)
 	for _, q := range []string{"name=a&meta.type=invoice&meta.customer=alice@example.com", "name=b&meta.type=receipt&meta.customer=alice@example.com", "name=c&meta.type=memo"} {
 		if res, out := e.do(nil, "POST", "/api/destinations/in/jobs?"+q, "wms:s3cret", doc); res.StatusCode != http.StatusCreated {
 			t.Fatalf("%s: %d %s", q, res.StatusCode, out)
 		}
 	}
-	if rep := e.tick(); rep.Delivered != 3 {
+	if rep := e.tick(); rep.Delivered != 2 {
 		t.Fatalf("tick %+v", rep)
 	}
-	if l := legs(e.job(1)); l != "in:routed vault:done by-type:routed(rule 1) invoices:listed(alice@example.com)" {
+	if l := legs(e.job(1)); l != "in:routed by-type:routed(rule 1) vault-i:done invoices:listed(alice@example.com) late:routed(otherwise) seen:kept" {
 		t.Fatalf("invoice: %s", l)
 	}
-	if l := legs(e.job(3)); l != "in:routed vault:done by-type:routed(otherwise) seen:kept" {
+	if l := legs(e.job(3)); l != "in:routed by-type:routed(otherwise) seen:kept" {
 		t.Fatalf("memo: %s", l)
 	}
 	for name, want := range map[string]string{"invoices": "a", "receipts": "b"} {
 		_, out := e.as("alice", "GET", "/out/"+name, nil)
 		var es []ExportEntry
 		json.Unmarshal(out, &es)
-		if len(es) != 1 || es[0].Name != want || es[0].Archive != "vault" {
+		if len(es) != 1 || es[0].Name != want || es[0].Archive != "vault-"+name[:1] || es[0].Inbox != "" {
 			t.Fatalf("%s: %+v", name, es)
 		}
-	}
-	// a job sent straight to the filter has no archive before the export
-	if res, out := e.do(nil, "POST", "/api/destinations/by-type/jobs?name=d&meta.type=invoice", "wms:s3cret", doc); res.StatusCode != http.StatusCreated {
-		t.Fatalf("straight to the filter: %d %s", res.StatusCode, out)
-	}
-	if l := legs(e.job(4)); l != "by-type:routed(rule 1) invoices:error" {
-		t.Fatalf("straight to the filter: %s", l)
 	}
 	// the activity counts what an export lists now: one deleted and put
 	// again under the same name lists nothing, whatever the legs say
@@ -605,10 +610,85 @@ func TestExportAfterFilter(t *testing.T) {
 	if n := live(); n.Listed != 1 {
 		t.Fatalf("live before %+v", n)
 	}
-	e.node("by-type", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"type": "^receipt$"}}, To: []string{"receipts"}}}, Otherwise: []string{"seen"}}, http.StatusOK)
+	e.node("vault-i", Node{Kind: KindArchive, Store: store("i")}, http.StatusOK)
 	e.admin("DELETE", "/api/nodes/invoices", nil, http.StatusNoContent)
 	e.node("invoices", Node{Kind: KindExport, By: "customer"}, http.StatusOK)
 	if n := live(); n.Listed != 0 {
 		t.Fatalf("live after the export was put again %+v", n)
+	}
+}
+
+// An export after an inbox lists each job while the inbox holds it,
+// read from the job's documents, with the job as its record. The inbox
+// does not release to it; a release or a discard takes the job off. The
+// inbox takes any kind still: its edge to the export carries a stocked
+// file.
+func TestExportInbox(t *testing.T) {
+	e := newEnv(t, withViewers)
+	e.node("pull", Node{Kind: KindExport, By: "customer"}, http.StatusOK)
+	e.node("done", Node{Kind: KindSink}, http.StatusOK)
+	e.node("hold", Node{Kind: KindInbox, To: []string{"pull", "done"}}, http.StatusOK)
+	e.node("in", Node{Kind: KindQueue, To: []string{"hold"}}, http.StatusOK)
+	doc := testDoc(t, 1)
+	for _, q := range []string{"name=a&meta.customer=alice@example.com", "name=b&meta.customer=alice@example.com"} {
+		if res, out := e.do(nil, "POST", "/api/destinations/in/jobs?"+q, "wms:s3cret", doc); res.StatusCode != http.StatusCreated {
+			t.Fatalf("%s: %d %s", q, res.StatusCode, out)
+		}
+	}
+	if l := legs(e.job(1)); l != "in:routed hold:held pull:listed(alice@example.com)" {
+		t.Fatalf("held: %s", l)
+	}
+	listed := func() []ExportEntry {
+		t.Helper()
+		res, out := e.as("alice", "GET", "/out/pull", nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("list: %d %s", res.StatusCode, out)
+		}
+		var es []ExportEntry
+		json.Unmarshal(out, &es)
+		return es
+	}
+	if es := listed(); len(es) != 2 || es[1].Inbox != "hold" || es[1].Item == "" || es[1].Archive != "" || es[1].Name != "a" {
+		t.Fatalf("listed %+v", es)
+	}
+	if res, out := e.as("alice", "GET", "/out/pull/1/document", nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, doc) {
+		t.Fatalf("document: %d %s", res.StatusCode, out)
+	}
+	var rec Job
+	if res, out := e.as("alice", "GET", "/out/pull/1/record", nil); res.StatusCode != http.StatusOK || json.Unmarshal(out, &rec) != nil || rec.Number != 1 {
+		t.Fatalf("record: %d %s", res.StatusCode, out)
+	}
+	// the inbox releases to done alone
+	var v InboxView
+	json.Unmarshal(e.admin("GET", "/api/inboxes/hold", nil, http.StatusOK), &v)
+	if strings.Join(v.To, ",") != "done" || len(v.Held) != 2 || v.Held[0].Job != 1 || strings.Join(v.Held[0].Listed, ",") != "pull" {
+		t.Fatalf("inbox %+v", v)
+	}
+	if out := e.admin("POST", "/api/items/"+v.Held[0].ID+"/release", map[string]any{"to": []string{"pull"}}, http.StatusBadRequest); !strings.Contains(string(out), "not a node to release to") {
+		t.Fatalf("release to the export: %s", out)
+	}
+	e.admin("POST", "/api/items/"+v.Held[0].ID+"/release", nil, http.StatusOK)
+	if l := legs(e.job(1)); l != "in:routed hold:released pull:listed(alice@example.com) done:kept" {
+		t.Fatalf("released: %s", l)
+	}
+	if es := listed(); len(es) != 1 || es[0].Job != 2 {
+		t.Fatalf("after the release %+v", es)
+	}
+	for _, path := range []string{"/out/pull/1", "/out/pull/1/document", "/out/pull/1/record"} {
+		if res, _ := e.as("alice", "GET", path, nil); res.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s after the release: %d", path, res.StatusCode)
+		}
+	}
+	// a discard takes it off as well
+	e.admin("POST", "/api/items/"+v.Held[1].ID+"/discard", nil, http.StatusOK)
+	if es := listed(); len(es) != 0 {
+		t.Fatalf("after the discard %+v", es)
+	}
+	var typed []TopoNode
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &typed)
+	for _, n := range typed {
+		if n.Name == "hold" && (len(n.Accepts) != 3 || len(n.Broken) > 0) || n.Name == "pull" && (n.Takes != PayloadStocked || n.Listed != 0) {
+			t.Fatalf("typing of %s: %+v", n.Name, n)
+		}
 	}
 }

@@ -47,12 +47,18 @@ type Kind struct {
 	Title string
 	Role  Role
 	// Takes are the kinds of payload its input takes (PayloadBDF,
-	// PayloadData, PayloadAny); none, every one.
+	// PayloadData, PayloadAny, PayloadStocked); none, every one but
+	// PayloadStocked.
 	Takes []string
 	// PassesOn tells a kind that sends on what reaches it (a router, an
 	// entry, an archive): its input takes what the nodes after it take,
 	// and it is typed by its first edge.
 	PassesOn bool
+	// Stocks tells a kind that keeps what reaches it (an inbox while it
+	// holds the job, an archive for good): along its To, to a node that
+	// takes a stocked file (HTTP (pull)), it sends that, read from where
+	// it keeps it, and what reaches it along the others.
+	Stocks bool
 	// Makes is the kind of payload it sends on whatever reaches it (a
 	// template node's .bdf); none, what reaches it.
 	Makes string
@@ -489,6 +495,7 @@ type KindInfo struct {
 	Role     Role     `json:"role"`
 	Takes    []string `json:"takes"`
 	PassesOn bool     `json:"passes_on,omitempty"`
+	Stocks   bool     `json:"stocks,omitempty"`
 	Makes    string   `json:"makes,omitempty"`
 	Fixed    bool     `json:"fixed,omitempty"`
 	// SendsOut tells an exit whose jobs are sent out of the topology
@@ -507,7 +514,7 @@ func KindInfos() []KindInfo {
 	ks := Kinds()
 	out := make([]KindInfo, 0, len(ks))
 	for _, k := range ks {
-		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Makes: k.Makes, Fixed: k.Fixed,
+		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Stocks: k.Stocks, Makes: k.Makes, Fixed: k.Fixed,
 			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name)})
 	}
 	return out

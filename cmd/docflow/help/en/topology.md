@@ -14,7 +14,7 @@ The canvas draws the nodes where the administrator placed them. A node is a whit
 | Transform | template, convert |
 | Sink | display, printer, archive, sink, HTTP (pull) |
 
-The ports and the edges are colored by what flows along them ([Kinds of payload](flow.md#kinds)): blue a `.bdf` document, green data, amber any file as received, purple several kinds. A port not typed yet is hollow and dashed: a queue, a class, a filter or an inbox takes the kind of its first edge. An edge drawn dashed and red no longer connects ([Broken edges](flow.md#broken)). An export has a dashed arrow going out: applications and people fetch what it lists. The legend under the canvas names the colors.
+The ports and the edges are colored by what flows along them ([Kinds of payload](flow.md#kinds)): blue a `.bdf` document, green data, amber any file as received, cyan a stocked file (from an inbox or an archive to HTTP (pull)), purple several kinds. A port not typed yet is hollow and dashed: a queue, a class, a filter or an inbox takes the kind of its first edge. An edge drawn dashed and red no longer connects ([Broken edges](flow.md#broken)). An export has a dashed arrow going out: applications and people fetch what it lists. The legend under the canvas names the colors.
 
 The activity of the jobs you may see runs on it — yours and your groups'; an administrator sees everyone's:
 

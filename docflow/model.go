@@ -321,12 +321,12 @@ func (n *Node) flowEdges() []string {
 }
 
 // sends tells the kinds a node sends along each of its edges, given the
-// kinds that reach it: what it emits along the edges of its flow, what
-// reached it along OnError.
-func (n *Node) sends(in kinds) map[string]kinds {
+// kinds that reach it and the nodes by name: what it emits along the
+// edges of its flow, what reached it along OnError.
+func (n *Node) sends(in kinds, nodes map[string]*Node) map[string]kinds {
 	out := map[string]kinds{}
 	for _, to := range n.flowEdges() {
-		out[to] |= n.emitsTo(in, to)
+		out[to] |= n.emitsTo(in, to, nodes[to])
 	}
 	for _, to := range n.OnError {
 		out[to] |= in
@@ -596,6 +596,8 @@ type Item struct {
 	// discarded it (or canceled the job).
 	Released  *Release `json:"released,omitempty"`
 	Discarded *Mark    `json:"discarded,omitempty"`
+	// Listed are the HTTP (pull) nodes that list it while it is held.
+	Listed []string `json:"listed,omitempty"`
 }
 
 // Release is an item sent on from an inbox.

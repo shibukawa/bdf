@@ -91,7 +91,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 |---|---|
 | `GET /out/<name>?owner=&limit=` | 読み手が読めるエントリ。新しい順 |
 | `GET /out/<name>/<job>` | 1 つのエントリ |
-| `GET /out/<name>/<job>/record` | アーカイブのジョブの記録 |
+| `GET /out/<name>/<job>/record` | アーカイブのジョブの記録（インボックスのエントリならジョブ） |
 | `GET /out/<name>/<job>/document` | アーカイブが書いたとおりの文書 |
 
 ## アプリと監査 {#apps}

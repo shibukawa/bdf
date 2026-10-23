@@ -91,7 +91,7 @@ A backend's token, a frontend's token of the person, or the pages' session ([HTT
 |---|---|
 | `GET /out/<name>?owner=&limit=` | the entries the reader may read, newest first |
 | `GET /out/<name>/<job>` | one entry |
-| `GET /out/<name>/<job>/record` | the archive's record of the job |
+| `GET /out/<name>/<job>/record` | the archive's record of the job (of an inbox's entry, the job) |
 | `GET /out/<name>/<job>/document` | the document, as the archive wrote it |
 
 ## Apps and audit {#apps}

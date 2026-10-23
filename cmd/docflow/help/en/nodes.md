@@ -103,11 +103,11 @@ Signs the `.bdf` document that reaches it with Docflow's key, as a witness, and 
 
 ## Inbox {#inbox}
 
-Holds the job until a person releases it to nodes, or discards it, on Admin → Inboxes ([Inboxes](inboxes.md#inboxes)). Released and discarded items stay shown for `keep`.
+Holds the job until a person releases it to nodes, or discards it, on Admin → Inboxes ([Inboxes](inboxes.md#inboxes)). Released and discarded items stay shown for `keep`. An [HTTP (pull)](#export) node in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded.
 
 | Setting | |
 |---|---|
-| Releases to (`to`) | the nodes an item may be released to; none: any node |
+| Releases to (`to`) | the nodes an item may be released to; none: any node. Its HTTP (pull) nodes are not among them |
 | Keep (`keep`) | how long ended items stay (14 days) |
 
 ## Display {#display}
@@ -150,7 +150,7 @@ Keeps the latest documents that reach it, to look at on the topology: the first 
 
 ## HTTP (pull) {#export}
 
-The kind `export`. Lists what an archive before it wrote, for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. A way that reaches it without an archive is refused, and nothing is printed to it. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
+The kind `export`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
 
 | Setting | |
 |---|---|

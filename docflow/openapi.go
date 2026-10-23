@@ -545,7 +545,7 @@ func (n *Node) expanded() []string {
 
 // export describes GET /out/<name> and its entries.
 func (d *apiDoc) export(n *Node) {
-	d.tag(n, "an export: the documents an archive wrote, for their owners and the apps it lists")
+	d.tag(n, "an export (HTTP (pull)): the documents an inbox holds or an archive wrote, for their owners and the apps it lists")
 	entry := d.goSchema(reflect.TypeFor[ExportEntry]())
 	if len(n.Fields) > 0 {
 		props := map[string]any{}
@@ -584,9 +584,10 @@ func (d *apiDoc) export(n *Node) {
 		jsonBody("the entries", map[string]any{"type": "array", "items": ref(entry)}))
 	d.paths[base+"/{job}"] = get("get_entry", "An entry of "+or(n.Title, n.Name), "One entry, by its job's number.",
 		[]any{job}, jsonBody("the entry", ref(entry)))
-	d.paths[base+"/{job}/record"] = get("get_record", "The archive's record of an entry", "The record the archive wrote of the job: its metadata, payloads and legs then.",
-		[]any{job}, jsonBody("the record", ref(d.goSchema(reflect.TypeFor[ArchiveRecord]()))))
-	d.paths[base+"/{job}/document"] = get("get_document", "The document of an entry", "The document as the archive wrote it, of the entry's format; the download is in the audit log.",
+	record := map[string]any{"oneOf": []any{ref(d.goSchema(reflect.TypeFor[ArchiveRecord]())), ref(d.goSchema(reflect.TypeFor[Job]()))}}
+	d.paths[base+"/{job}/record"] = get("get_record", "The record of an entry", "The record the archive wrote of the job: its metadata, payloads and legs then; of an inbox's entry, the job as it is now.",
+		[]any{job}, jsonBody("the record", record))
+	d.paths[base+"/{job}/document"] = get("get_document", "The document of an entry", "The document where it is kept (as the archive wrote it, or as the inbox holds it), of the entry's format; the download is in the audit log.",
 		[]any{job}, map[string]any{"description": "the document", "content": map[string]any{"*/*": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}})
 }
 

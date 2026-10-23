@@ -18,9 +18,10 @@ import (
 type routing struct {
 	job     *Job
 	payload *Payload
-	// archived is what the last archive on the way wrote (the job goes on
-	// from an archive once it wrote): what an export lists.
-	archived *archiveRef
+	// stock is where an inbox or an archive keeps the payload (an
+	// archive's job goes on once it wrote it; an inbox's while it holds
+	// it): what an HTTP (pull) node right after it lists.
+	stock *stockRef
 	// trace is the step the payload came out of, or went into (trace.go).
 	trace *Trace
 	// cause is the failure the job left a node for along an on_error
@@ -34,6 +35,16 @@ type routing struct {
 
 // next is the index of the next leg, which names a delivery.
 func (r *routing) next() int { return len(r.job.Legs) + len(r.legs) }
+
+// fits tells whether a node of a kind takes the payload as it comes from
+// a node: a stocked file, from the inbox or the archive that keeps it, to
+// a node that reads one there (HTTP (pull)); else the payload's kind.
+func (r *routing) fits(kind, from string) bool {
+	if t := takes(kind); t.has(PayloadStocked) {
+		return r.stock != nil && r.stock.Node == from
+	}
+	return takes(kind).has(r.payload.Kind)
+}
 
 func (r *routing) add(l Leg) {
 	l.At = r.now
@@ -60,8 +71,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		r.add(Leg{Node: name, From: from, State: LegError, Error: "no such node"})
 		return
 	}
-	if r.payload != nil && !takes(kind).has(r.payload.Kind) {
-		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: fmt.Sprintf("takes %s; this is %s", takes(kind), r.payload.Kind)})
+	if r.payload != nil && !r.fits(kind, from) {
+		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: fmt.Sprintf("takes %s; this is %s from %s", takes(kind), r.payload.Kind, from)})
 		return
 	}
 	k := kindNamed(kind)
