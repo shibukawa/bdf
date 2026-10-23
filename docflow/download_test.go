@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -198,6 +199,33 @@ func TestDownload(t *testing.T) {
 	if len(log) == 0 || log[0].Action != "download-document" || log[0].Who != "Alice" || log[0].Subject != "out" || !strings.HasPrefix(log[0].Detail, "job 1 ") {
 		t.Fatalf("audit %+v", log)
 	}
+	// its pages are drawn from the archive, to look at before the
+	// download: the owner's alone, and not in the audit log
+	page := func(who, path string) (int, int) {
+		t.Helper()
+		res, out := e.as(who, "GET", path, nil)
+		if res.StatusCode != http.StatusOK {
+			return res.StatusCode, 0
+		}
+		img, err := png.Decode(bytes.NewReader(out))
+		if err != nil || res.Header.Get("Content-Type") != "image/png" {
+			t.Fatalf("%s: %v %s", path, err, res.Header.Get("Content-Type"))
+		}
+		return res.StatusCode, img.Bounds().Dx()
+	}
+	for _, c := range []struct {
+		who, path   string
+		want, width int
+	}{{"alice", "/api/download/out/1/pages/2.png?w=120", 200, 120}, {"alice", "/api/download/out/1/pages/1.png", 200, 800}, {"root", "/api/download/out/4/pages/1.png?w=96", 200, 96},
+		{"alice", "/api/download/out/1/pages/3.png", 404, 0}, {"alice", "/api/download/out/1/pages/0.png", 404, 0}, {"alice", "/api/download/out/1/pages/x.png", 404, 0}, {"bob", "/api/download/out/1/pages/1.png", 404, 0}, {"alice", "/api/download/out/2/pages/1.png", 404, 0}} {
+		if got, width := page(c.who, c.path); got != c.want || width != c.width {
+			t.Fatalf("%s %s: %d, %d px wide; want %d, %d", c.who, c.path, got, width, c.want, c.width)
+		}
+	}
+	json.Unmarshal(e.admin("GET", "/api/audit?limit=5", nil, http.StatusOK), &log)
+	if log[0].Action != "download-document" {
+		t.Fatalf("a page in the audit log: %+v", log[0])
+	}
 	// the topology and the activity count what is listed
 	var topo []TopoNode
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
@@ -312,6 +340,9 @@ func TestDownload(t *testing.T) {
 	}
 	if res, out := e.as("alice", "GET", "/api/download/out/1/document", nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, doc) {
 		t.Fatalf("document after the job went: %d", res.StatusCode)
+	}
+	if got, width := page("alice", "/api/download/out/1/pages/1.png?w=200"); got != http.StatusOK || width != 200 {
+		t.Fatalf("a page after the job went: %d, %d px wide", got, width)
 	}
 	// deleting the downloader forgets its entries; the archive keeps the documents
 	e.admin("DELETE", "/api/nodes/out", nil, http.StatusConflict) // vault sends to it
@@ -661,6 +692,9 @@ func TestDownloadInbox(t *testing.T) {
 	if res, out := e.as("alice", "GET", "/api/download/pull/1/document", nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, doc) {
 		t.Fatalf("document: %d %s", res.StatusCode, out)
 	}
+	if res, out := e.as("alice", "GET", "/api/download/pull/1/pages/1.png?w=100", nil); res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("a page: %d %s", res.StatusCode, out)
+	}
 	var rec Job
 	if res, out := e.as("alice", "GET", "/api/download/pull/1/record", nil); res.StatusCode != http.StatusOK || json.Unmarshal(out, &rec) != nil || rec.Number != 1 {
 		t.Fatalf("record: %d %s", res.StatusCode, out)
@@ -681,7 +715,7 @@ func TestDownloadInbox(t *testing.T) {
 	if es := listed(); len(es) != 1 || es[0].Job != 2 {
 		t.Fatalf("after the release %+v", es)
 	}
-	for _, path := range []string{"/api/download/pull/1", "/api/download/pull/1/document", "/api/download/pull/1/record"} {
+	for _, path := range []string{"/api/download/pull/1", "/api/download/pull/1/document", "/api/download/pull/1/record", "/api/download/pull/1/pages/1.png"} {
 		if res, _ := e.as("alice", "GET", path, nil); res.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s after the release: %d", path, res.StatusCode)
 		}

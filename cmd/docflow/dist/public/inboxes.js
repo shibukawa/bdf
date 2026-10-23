@@ -1,11 +1,12 @@
 // The inboxes the person works (every one for the role topology, their
 // groups' and their own for the others), through the API applications
 // use too (/api/inbox): the items each holds, with the first page of
-// each, released to a node of the inbox's choice (or to any, when it
-// names none: the role topology's alone) or discarded, with the worker's
-// name for the record.
+// each (a click shows every page in the lightbox, with the download),
+// released to a node of the inbox's choice (or to any, when it names
+// none: the role topology's alone) or discarded, with the worker's name
+// for the record.
 
-import { $, _, api, badge, button, el, onChange, sender, since, status } from "./admin.js";
+import { $, _, api, badge, button, el, onChange, pagesText, preview, sender, since, status } from "./admin.js";
 
 let me = null; // /api/me: whether the person has the role topology
 
@@ -31,9 +32,11 @@ async function load() {
         const tr = el("tr");
         const thumb = el("td", undefined, { className: "w-20" });
         if (it.pages) {
-          const a = el("a", undefined, { href: `${at}/document`, title: _("download the document") });
-          a.append(el("img", undefined, { src: `${at}/thumbnail?size=128`, alt: _("page 1 of #{n}", { n: it.job }), className: "h-16 w-auto rounded bg-white shadow-sm", loading: "lazy" }));
-          thumb.append(a);
+          const doc = { title: `#${it.job} ${it.name || ""}`, sub: `${pagesText(it.pages)} · ${since(it.received)}`, pages: it.pages, page: (n, w) => `${at}/pages/${n}.png?w=${w}`, href: `${at}/document` };
+          const b = el("button", undefined, { type: "button", className: "cursor-pointer", title: _("Show the pages, with the download") });
+          b.append(el("img", undefined, { src: `${at}/thumbnail?size=128`, alt: _("page 1 of {doc}", { doc: doc.title }), className: "h-16 w-auto rounded bg-white shadow-sm", loading: "lazy" }));
+          b.addEventListener("click", () => preview(doc));
+          thumb.append(b);
         } else {
           thumb.append(el("a", _("Document"), { className: "link text-xs", href: `${at}/document` }));
         }

@@ -17,8 +17,8 @@ import (
 // and the slips it still shows, an inbox's items it still shows, a sink's
 // documents, a downloader's entries, and the list of the jobs sent to it.
 // An archive keeps writing to the collection it wrote to. Where the node
-// is reached changes with it (/ipp/print/<name>, /in/<name>,
-// /out/<name>, a CUPS server's /printers/<name>); the jobs that reached
+// is reached changes with it (/ipp/print/<name>, /api/<kind>/<name>, a
+// CUPS server's /printers/<name>); the jobs that reached
 // it keep the name they had. A node with work on its way (deliveries
 // waiting or failed, items held, slips open) is refused, and so is one
 // the manager's options name (on_error).

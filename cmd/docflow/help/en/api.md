@@ -89,6 +89,7 @@ The nodes an application reaches, by kind and name:
 | `POST /api/inbox/<name>/<job>/release`, `…/discard` | `{"to": ["<node>", …], "worker": "…"}`, `{"worker": "…"}`: the decision ([The inboxes' API](inboxes.md#api)) |
 | `GET /api/download/<name>?owner=&limit=` | the entries the reader may read, newest first ([Downloaders](downloads.md)) |
 | `GET /api/download/<name>/<job>`, `…/record`, `…/document` | one entry, the archive's record of the job (of an inbox's entry, the job), the document |
+| `GET /api/download/<name>/<job>/pages/<n>.png?w=` | a page of an entry's `.bdf` document, as PNG |
 
 The inboxes and the downloaders answer the pages of a public client's origin (CORS), for a frontend that calls them with a person's token.
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/yuruidb"
+	"github.com/shibukawa/yuruidb/blob"
 )
 
 // A downloader is an exit that applications and people fetch documents
@@ -597,22 +598,31 @@ func (m *Manager) archiveOf(ctx context.Context, e *DownloadEntry) (*Node, error
 	return a, nil
 }
 
+// storeOf finds where an object of an entry is: the store of the archive
+// that wrote it, or of an inbox's the documents' (the object is then the
+// job's payload it holds).
+func (m *Manager) storeOf(ctx context.Context, e *DownloadEntry, object string) (*blob.Store, string, error) {
+	if e.Inbox != "" {
+		return m.st.docs, e.Payload, nil
+	}
+	a, err := m.archiveOf(ctx, e)
+	if err != nil {
+		return nil, "", err
+	}
+	st, err := m.st.archive(ctx, a.Store, a.collection())
+	if err != nil {
+		return nil, "", err
+	}
+	return st, object, nil
+}
+
 // downloadObject streams an object of the archive that wrote an entry, or
 // of an inbox's the job's payload it holds.
 func (h *handler) downloadObject(w http.ResponseWriter, r *http.Request, e *DownloadEntry, object, contentType, disposition string) {
-	st := h.m.st.docs
-	if e.Inbox != "" {
-		object = e.Payload
-	} else {
-		a, err := h.m.archiveOf(r.Context(), e)
-		if err != nil {
-			h.writeErr(w, err)
-			return
-		}
-		if st, err = h.m.st.archive(r.Context(), a.Store, a.collection()); err != nil {
-			h.writeErr(w, err)
-			return
-		}
+	st, object, err := h.m.storeOf(r.Context(), e, object)
+	if err != nil {
+		h.writeErr(w, err)
+		return
 	}
 	rd, err := st.Open(r.Context(), object)
 	if err != nil {
@@ -668,4 +678,37 @@ func (h *handler) downloadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	h.m.audit(r.Context(), v.Label(), "download-document", n.Name, fmt.Sprintf("job %d %s", e.Job, clip(e.Name, 100)))
 	h.downloadObject(w, r, e, e.Object, contentTypeOf(e.Format, e.Name), `attachment; filename="`+name+`"`)
+}
+
+// downloadPage is …/pages/<n>.png?w=: a page of the entry's .bdf document,
+// drawn from where it is kept, to look at before the download (which
+// alone is in the audit log).
+func (h *handler) downloadPage(w http.ResponseWriter, r *http.Request) {
+	_, _, e, ok := h.downloadEntry(w, r)
+	if !ok {
+		return
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(r.PathValue("page"), ".png"))
+	if err != nil {
+		h.writeErr(w, ErrNotFound)
+		return
+	}
+	if e.Kind != PayloadBDF {
+		h.writeErr(w, fmt.Errorf("%w: job %d is %s, not a .bdf document", ErrNotFound, e.Job, e.Kind))
+		return
+	}
+	st, object, err := h.m.storeOf(r.Context(), e, e.Object)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	if width == 0 {
+		width = 800
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	if err := h.m.writePageIn(r.Context(), st, object, e.Pages, n-1, width, w); err != nil {
+		h.writeErr(w, err)
+	}
 }

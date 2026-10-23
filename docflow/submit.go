@@ -18,6 +18,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/yuruidb/blob"
 )
 
 // Input is a document, or data, sent to a destination.
@@ -419,7 +420,13 @@ func (m *Manager) Reprint(ctx context.Context, j *Job, dest string, by *Principa
 
 // Document returns the .bdf document of a payload.
 func (m *Manager) Document(ctx context.Context, payload string) (*bdf.Document, error) {
-	r, err := m.st.docs.Open(ctx, payload)
+	return documentIn(ctx, m.st.docs, payload)
+}
+
+// documentIn reads the .bdf document of an object of a store: the
+// documents', or an archive's.
+func documentIn(ctx context.Context, st *blob.Store, object string) (*bdf.Document, error) {
+	r, err := st.Open(ctx, object)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -444,11 +451,17 @@ const MaxPageWidth = 2400
 // WritePage draws a page (from 0, of pages) of a .bdf payload as PNG,
 // width pixels wide.
 func (m *Manager) WritePage(ctx context.Context, payload string, pages, page, width int, w io.Writer) error {
+	return m.writePageIn(ctx, m.st.docs, payload, pages, page, width, w)
+}
+
+// writePageIn draws a page of the .bdf document of an object of a store
+// (an archive's, for an export's entry).
+func (m *Manager) writePageIn(ctx context.Context, st *blob.Store, object string, pages, page, width int, w io.Writer) error {
 	if page < 0 || page >= pages {
 		return fmt.Errorf("%w: page %d of %d", ErrNotFound, page+1, pages)
 	}
 	width = min(max(width, 64), MaxPageWidth)
-	doc, err := m.Document(ctx, payload)
+	doc, err := documentIn(ctx, st, object)
 	if err != nil {
 		return err
 	}

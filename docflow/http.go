@@ -104,6 +104,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET "+download+"/{node}/{job}", h.cors(h.getDownloadEntry))
 	mux.HandleFunc("GET "+download+"/{node}/{job}/record", h.cors(h.downloadRecord))
 	mux.HandleFunc("GET "+download+"/{node}/{job}/document", h.cors(h.downloadDocument))
+	mux.HandleFunc("GET "+download+"/{node}/{job}/pages/{page}", h.cors(h.downloadPage))
 	mux.HandleFunc("OPTIONS "+download+"/{rest...}", h.cors(nil))
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))

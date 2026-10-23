@@ -770,6 +770,11 @@ func (d *apiDoc) download(n *Node) {
 		[]any{job}, jsonBody("the record", record))
 	d.paths[base+"/{job}/document"] = get("get_document", "The document of an entry", "The document where it is kept (as the archive wrote it, or as the inbox holds it), of the entry's format; the download is in the audit log.",
 		[]any{job}, map[string]any{"description": "the document", "content": map[string]any{"*/*": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}})
+	d.paths[base+"/{job}/pages/{page}"] = get("get_page", "A page of an entry", "A page of the entry's .bdf document drawn as PNG, to look at before the download (not in the audit log); an entry of another kind has none.",
+		[]any{job,
+			map[string]any{"name": "page", "in": "path", "required": true, "description": "The page's number, from 1, with .png.", "schema": map[string]any{"type": "string", "pattern": `^[1-9][0-9]*\.png$`}},
+			map[string]any{"name": "w", "in": "query", "description": "The width in pixels (800).", "schema": map[string]any{"type": "integer", "minimum": 64, "maximum": MaxPageWidth}},
+		}, map[string]any{"description": "the page", "content": map[string]any{"image/png": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}})
 }
 
 // The jobs an app sent.

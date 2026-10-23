@@ -1748,7 +1748,8 @@ POST ${base}/<job>/discard   {"worker": "…"}`));
       sec.append(pre(`GET ${base}
 GET ${base}/<job>
 GET ${base}/<job>/record
-GET ${base}/<job>/document`));
+GET ${base}/<job>/document
+GET ${base}/<job>/pages/<n>.png?w=`));
       box.append(sec);
       listedSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
       break;

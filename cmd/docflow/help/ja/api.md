@@ -89,6 +89,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | `POST /api/inbox/<name>/<job>/release`、`…/discard` | `{"to": ["<node>", …], "worker": "…"}`、`{"worker": "…"}`。決定です（[インボックスの API](inboxes.md#api)） |
 | `GET /api/download/<name>?owner=&limit=` | 読み手が読めるエントリ。新しい順（[ダウンローダー](downloads.md)） |
 | `GET /api/download/<name>/<job>`、`…/record`、`…/document` | 1 つのエントリ、アーカイブのジョブの記録（インボックスのエントリならジョブ）、文書 |
+| `GET /api/download/<name>/<job>/pages/<n>.png?w=` | エントリの `.bdf` 文書のページの PNG |
 
 インボックスとダウンローダーは、公開クライアントのオリジンのページにも応えます（CORS）。人のトークンで呼ぶフロントエンドのためです。
 
