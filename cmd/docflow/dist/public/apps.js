@@ -2,9 +2,9 @@
 // (client credentials). An administrator registers one with its scopes
 // and gets its secret once; an endpoint lists the apps it takes.
 
-import { $, api, badge, button, el, onChange, since, status } from "./admin.js";
+import { $, _, api, badge, button, el, onChange, since, status } from "./admin.js";
 
-const SCOPES = { print: "print: send documents", "print.template": "print.template: fill templates", "jobs.cancel": "jobs.cancel: cancel its own jobs", export: "export: read the exports", tick: "tick: POST /api/tick", admin: "admin: the API as an administrator" };
+const SCOPES = { print: _("print: send documents"), "print.template": _("print.template: fill templates"), "jobs.cancel": _("jobs.cancel: cancel its own jobs"), export: _("export: read the exports"), tick: "tick: POST /api/tick", admin: _("admin: the API as an administrator") };
 
 let editing = ""; // the app in the form
 
@@ -22,23 +22,23 @@ async function load() {
       const tr = el("tr", undefined, { className: a.disabled ? "opacity-60" : "" });
       const lists = topo.filter((n) => (n.apps || []).includes(a.id)).map((n) => n.name);
       const where = a.public ? (a.redirect_uris || []).join(", ") : lists.join(", ");
-      tr.append(el("td", a.id, { className: "font-mono font-semibold" }), el("td", a.title || ""), el("td"), el("td", a.group || "", { className: "text-sm" }), el("td", where, { className: "font-mono text-xs break-all" }), el("td", a.last_used ? since(a.last_used) : "never", { className: "whitespace-nowrap text-sm text-base-content/60" }), el("td", undefined, { className: "whitespace-nowrap" }));
-      if (a.public) tr.children[2].append(badge("public client", "badge-info badge-soft mr-1"));
+      tr.append(el("td", a.id, { className: "font-mono font-semibold" }), el("td", a.title || ""), el("td"), el("td", a.group || "", { className: "text-sm" }), el("td", where, { className: "font-mono text-xs break-all" }), el("td", a.last_used ? since(a.last_used) : _("never"), { className: "whitespace-nowrap text-sm text-base-content/60" }), el("td", undefined, { className: "whitespace-nowrap" }));
+      if (a.public) tr.children[2].append(badge(_("public client"), "badge-info badge-soft mr-1"));
       for (const s of a.scopes || []) tr.children[2].append(badge(s, s === "admin" ? "badge-error badge-soft mr-1" : "badge-ghost mr-1"));
-      if (a.disabled) tr.children[2].append(badge("disabled", "badge-warning"));
+      if (a.disabled) tr.children[2].append(badge(_("disabled"), "badge-warning"));
       const actions = tr.lastChild;
       const saved = { title: a.title, scopes: a.scopes, group: a.group, public: a.public, redirect_uris: a.redirect_uris };
-      actions.append(button("Edit", async () => edit(a), "btn btn-xs btn-ghost mr-1"));
-      if (!a.public) actions.append(button("Rotate secret", async () => showSecret(a.id, (await api("POST", `/api/apps/${a.id}/secret`)).secret), "btn btn-xs btn-ghost mr-1"));
+      actions.append(button(_("Edit"), async () => edit(a), "btn btn-xs btn-ghost mr-1"));
+      if (!a.public) actions.append(button(_("Rotate secret"), async () => showSecret(a.id, (await api("POST", `/api/apps/${a.id}/secret`)).secret), "btn btn-xs btn-ghost mr-1"));
       actions.append(
-        button(a.disabled ? "Enable" : "Disable", () => api("PUT", "/api/apps/" + a.id, { ...saved, disabled: !a.disabled }), "btn btn-xs btn-ghost mr-1"),
-        button("Delete", () => api("DELETE", "/api/apps/" + a.id), "btn btn-xs btn-ghost text-error"),
+        button(a.disabled ? _("Enable") : _("Disable"), () => api("PUT", "/api/apps/" + a.id, { ...saved, disabled: !a.disabled }), "btn btn-xs btn-ghost mr-1"),
+        button(_("Delete"), () => api("DELETE", "/api/apps/" + a.id), "btn btn-xs btn-ghost text-error"),
       );
       return tr;
     });
     if (!rows.length) {
       const tr = el("tr");
-      tr.append(el("td", "No apps yet", { colSpan: 7, className: "text-base-content/50" }));
+      tr.append(el("td", _("No apps yet"), { colSpan: 7, className: "text-base-content/50" }));
       rows.push(tr);
     }
     $("apps").replaceChildren(...rows);
@@ -49,7 +49,7 @@ async function load() {
 
 function scopeBoxes(checked) {
   const box = $("app-scopes");
-  box.replaceChildren(el("span", "Scopes", { className: "text-sm font-semibold" }));
+  box.replaceChildren(el("span", _("Scopes"), { className: "text-sm font-semibold" }));
   for (const [s, label] of Object.entries(SCOPES)) {
     const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
     l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-sm", name: "scope", value: s, checked: checked.includes(s) }), label);
@@ -67,7 +67,7 @@ function edit(a) {
   $("app-redirects").value = (a.redirect_uris || []).join("\n");
   publicFields();
   scopeBoxes(a.scopes || []);
-  $("app-submit").textContent = "Save " + a.id;
+  $("app-submit").textContent = _("Save {id}", { id: a.id });
   $("app-cancel").hidden = false;
   $("app-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -83,7 +83,7 @@ function reset() {
   $("app-id").readOnly = false;
   publicFields();
   scopeBoxes(["print"]);
-  $("app-submit").textContent = "Add";
+  $("app-submit").textContent = _("Add");
   $("app-cancel").hidden = true;
 }
 
@@ -100,8 +100,8 @@ $("app-form").addEventListener("submit", async (ev) => {
     const a = await api("PUT", "/api/apps/" + encodeURIComponent(id), body);
     reset();
     if (a.secret) showSecret(id, a.secret);
-    else if (a.public) status(`${id} saved: a public client, with no secret. Its frontend sends people to ${location.origin}/oauth/authorize (PKCE) and exchanges the code at /oauth/token`);
-    else status(`${id} saved`);
+    else if (a.public) status(_("{id} saved: a public client, with no secret. Its frontend sends people to {url} (PKCE) and exchanges the code at /oauth/token", { id, url: location.origin + "/oauth/authorize" }));
+    else status(_("{name} saved", { name: id }));
     await load();
   } catch (e) {
     status(e.message, true);

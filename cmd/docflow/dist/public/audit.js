@@ -1,4 +1,4 @@
-import "./admin.js";
+import { _, locale, STATES } from "./admin.js";
 
 // The administrator's audit page: who did what, and the recent jobs with
 // their routes, through the API with the session's cookie.
@@ -9,7 +9,7 @@ async function api(path) {
   const res = await fetch(path);
   if (res.status === 401) {
     location.href = "/";
-    throw new Error("signed out");
+    throw new Error(_("signed out"));
   }
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || res.statusText);
@@ -20,7 +20,7 @@ async function api(path) {
 function sender(j) {
   const by = j.submitted_by || {};
   const who = by.name || by.id || by.kind || "";
-  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+  return j.claimed_user && j.claimed_user !== who ? _("{who} (as {claimed})", { who, claimed: j.claimed_user }) : who;
 }
 
 function el(tag, text, attrs = {}) {
@@ -41,7 +41,7 @@ async function load() {
   const rows = log.map((e) => {
     const tr = el("tr");
     tr.append(
-      el("td", new Date(e.at).toLocaleString(), { className: "text-sm text-base-content/60 whitespace-nowrap" }),
+      el("td", new Date(e.at).toLocaleString(locale), { className: "text-sm text-base-content/60 whitespace-nowrap" }),
       el("td", e.who, { className: "font-mono text-sm" }),
       el("td", e.action, { className: "font-semibold" }),
       el("td", e.subject || "", { className: "font-mono text-sm" }),
@@ -51,7 +51,7 @@ async function load() {
   });
   if (!rows.length) {
     const tr = el("tr");
-    tr.append(el("td", "Nothing yet", { colSpan: 5, className: "text-base-content/50" }));
+    tr.append(el("td", _("Nothing yet"), { colSpan: 5, className: "text-base-content/50" }));
     rows.push(tr);
   }
   $("audit").replaceChildren(...rows);
@@ -65,15 +65,15 @@ async function load() {
       el("td", j.dest, { className: "font-mono text-sm" }),
       el("td", sender(j), { className: "text-sm" }),
       el("td", j.source, { className: "text-sm" }),
-      el("td", new Date(j.received).toLocaleString(), { className: "text-sm text-base-content/60 whitespace-nowrap" }),
-      el("td", j.state),
+      el("td", new Date(j.received).toLocaleString(locale), { className: "text-sm text-base-content/60 whitespace-nowrap" }),
+      el("td", STATES[j.state] || j.state, { title: j.state }),
       el("td", legsOf(j), { className: "font-mono text-xs" }),
     );
     return tr;
   });
   if (!jrows.length) {
     const tr = el("tr");
-    tr.append(el("td", "No jobs yet", { colSpan: 8, className: "text-base-content/50" }));
+    tr.append(el("td", _("No jobs yet"), { colSpan: 8, className: "text-base-content/50" }));
     jrows.push(tr);
   }
   $("jobs").replaceChildren(...jrows);

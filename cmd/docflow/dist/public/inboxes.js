@@ -2,7 +2,7 @@
 // choice (or any, when it names none) or discarded, with the worker's
 // name for the record.
 
-import { $, api, badge, button, el, onChange, sender, since, status } from "./admin.js";
+import { $, _, api, badge, button, el, onChange, sender, since, status } from "./admin.js";
 
 async function load() {
   try {
@@ -14,8 +14,8 @@ async function load() {
       const card = el("div", undefined, { className: "card bg-base-100 shadow-sm" });
       const body = el("div", undefined, { className: "card-body gap-3" });
       const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-      head.append(el("h3", v.title, { className: "card-title" }), badge(n.name, "badge-ghost font-mono"), badge("held " + v.held.length, v.held.length ? "badge-warning" : "badge-ghost"), badge("released or discarded " + v.ended.length));
-      head.append(el("a", "Edit the node", { className: "btn btn-xs btn-ghost", href: "/admin/topology#" + encodeURIComponent(n.name) }));
+      head.append(el("h3", v.title, { className: "card-title" }), badge(n.name, "badge-ghost font-mono"), badge(_("held {n}", { n: v.held.length }), v.held.length ? "badge-warning" : "badge-ghost"), badge(_("released or discarded {n}", { n: v.ended.length })));
+      head.append(el("a", _("Edit the node"), { className: "btn btn-xs btn-ghost", href: "/admin/topology#" + encodeURIComponent(n.name) }));
       body.append(head);
       const table = el("table", undefined, { className: "table table-sm" });
       const tbody = el("tbody");
@@ -33,20 +33,20 @@ async function load() {
             choice.append(l);
           }
         } else {
-          const free = el("input", undefined, { className: "input input-sm w-48", placeholder: "nodes (comma-separated)" });
+          const free = el("input", undefined, { className: "input input-sm w-48", placeholder: _("nodes (comma-separated)") });
           boxes.push(free);
           choice.append(free);
         }
         const targets = () => (v.to.length ? boxes.filter((b) => b.checked).map((b) => b.value) : boxes[0].value.split(","));
         tr.lastChild.append(
-          button("Release", () => api("POST", `/api/items/${it.id}/release`, { to: targets(), worker: $("worker").value }), "btn btn-sm btn-primary mr-1"),
-          button("Discard", () => api("POST", `/api/items/${it.id}/discard`, { worker: $("worker").value }), "btn btn-sm btn-ghost text-error"),
+          button(_("Release"), () => api("POST", `/api/items/${it.id}/release`, { to: targets(), worker: $("worker").value }), "btn btn-sm btn-primary mr-1"),
+          button(_("Discard"), () => api("POST", `/api/items/${it.id}/discard`, { worker: $("worker").value }), "btn btn-sm btn-ghost text-error"),
         );
         tbody.append(tr);
       }
       if (!v.held.length) {
         const tr = el("tr");
-        tr.append(el("td", "Nothing held", { colSpan: 6, className: "text-base-content/50" }));
+        tr.append(el("td", _("Nothing held"), { colSpan: 6, className: "text-base-content/50" }));
         tbody.append(tr);
       }
       table.append(tbody);
@@ -54,10 +54,10 @@ async function load() {
       body.lastChild.append(table);
       if (v.ended.length) {
         const details = el("details", undefined, { className: "collapse collapse-arrow bg-base-200" });
-        details.append(el("summary", `Released or discarded: ${v.ended.length}`, { className: "collapse-title text-sm" }));
+        details.append(el("summary", _("Released or discarded: {n}", { n: v.ended.length }), { className: "collapse-title text-sm" }));
         const list = el("ul", undefined, { className: "collapse-content text-sm" });
         for (const it of v.ended) {
-          const what = it.state === "released" ? `→ ${it.released.to.join(", ")} (${it.released.worker || ""} ${since(it.released.at)})` : `discarded (${it.discarded.worker || ""} ${since(it.discarded.at)})`;
+          const what = it.state === "released" ? `→ ${it.released.to.join(", ")} (${it.released.worker || ""} ${since(it.released.at)})` : _("discarded ({who} {when})", { who: it.discarded.worker || "", when: since(it.discarded.at) });
           list.append(el("li", `#${it.job} ${it.name || ""} ${what}`));
         }
         details.append(list);
@@ -68,7 +68,7 @@ async function load() {
     }
     if (!cards.length) {
       const p = el("p", undefined, { className: "text-base-content/50" });
-      p.append("No inboxes yet. Add one on the ", el("a", "topology", { className: "link", href: "/admin/topology" }), ".");
+      p.append(_("No inboxes yet."), el("a", _("Add one on the topology."), { className: "link ms-1", href: "/topology" }));
       cards.push(p);
     }
     $("inboxes").replaceChildren(...cards);

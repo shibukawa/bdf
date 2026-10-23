@@ -26,3 +26,19 @@ embed = "cmd/docflow/public.go"
 [dev.idp]
 enabled = true
 config = "cmd/docflow/devidp.toml"
+
+# The pages are in English and Japanese: in the language a person chose
+# with the bar's switch (pw's cookie), else the browser's
+# (Accept-Language), else English. The texts of the templates are the
+# catalog's (cmd/docflow/messages); the scripts' are public/ja.js. The
+# API is not translated: handlers.App puts only the pages behind the
+# negotiation.
+[i18n]
+locales = ["en", "ja"]
+default_locale = "en"
+catalog = "cmd/docflow/messages"
+cookie_routes = ["/"]
+
+[i18n.label]
+en = "English"
+ja = "日本語"

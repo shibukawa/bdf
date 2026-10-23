@@ -143,20 +143,7 @@ func TestKinds(t *testing.T) {
 	}
 }
 
-func TestLang(t *testing.T) {
-	for accept, want := range map[string]string{
-		"":                              "en",
-		"ja,en-US;q=0.9,en;q=0.8":       "ja",
-		"ja-JP":                         "ja",
-		"fr-CH, fr;q=0.9, en;q=0.8, ja": "en",
-		"de":                            "en",
-		"*":                             "en",
-		"JA":                            "ja",
-	} {
-		if got := Lang(accept); got != want {
-			t.Errorf("Lang(%q) = %s, want %s", accept, got, want)
-		}
-	}
+func TestURL(t *testing.T) {
 	if URL("ja", "index") != "/help/ja" || URL("en", "jobs") != "/help/en/jobs" {
 		t.Error("URL")
 	}

@@ -56,13 +56,14 @@ func TestHelp(t *testing.T) {
 	}
 
 	// a chapter: the manual's HTML, the sidebar with the chapter marked
-	// and its sections under it, the other language at the same chapter
+	// and its sections under it, and the bar's switch of the language,
+	// which comes back to the chapter in the language chosen
 	code, body := alice.get("/help/en/nodes")
 	if code != http.StatusOK {
 		t.Fatalf("/help/en/nodes: %d", code)
 	}
 	for _, want := range []string{`<article id="help" lang="en"`, `<h1 id="node-kinds">`, `<h2 id="printer">`, `class="menu-active"`, `href="/help/en/nodes#printer"`,
-		`href="/help/ja/nodes"`, `>日本語<`, `href="/help/en"`, `href="/help/en/jobs"`, `<title>Node kinds · Help · BDF Docflow</title>`, `id="account-name"`, "<table>"} {
+		`name="next" value="/help/nodes"`, `>日本語<`, `href="/help/en"`, `href="/help/en/jobs"`, `<title>Node kinds · Help · BDF Docflow</title>`, `id="account-name"`, "<table>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/help/en/nodes: no %s", want)
 		}
@@ -70,8 +71,9 @@ func TestHelp(t *testing.T) {
 	if strings.Contains(body, ".md") || strings.Contains(body, "raw HTML omitted") {
 		t.Error("/help/en/nodes: a link to a file, or HTML dropped")
 	}
+	// the chapter's language is its path's; the bar's is the pages'
 	code, body = alice.get("/help/ja")
-	if code != http.StatusOK || !strings.Contains(body, `lang="ja"`) || !strings.Contains(body, `href="/help/en"`) || !strings.Contains(body, `>English<`) {
+	if code != http.StatusOK || !strings.Contains(body, `<article id="help" lang="ja"`) || !strings.Contains(body, `<html lang="en"`) || !strings.Contains(body, `href="/help/ja/jobs"`) {
 		t.Errorf("/help/ja: %d %.300s", code, body)
 	}
 	// every chapter of every language serves

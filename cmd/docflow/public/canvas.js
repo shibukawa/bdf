@@ -22,7 +22,7 @@
 // it takes (after a change of settings) is drawn broken: dashed, red,
 // with a mark on it.
 
-import { KINDS, PAYLOAD_COLOR, PAYLOADS } from "./admin.js";
+import { _, KINDS, PAYLOAD_COLOR, PAYLOADS, sentences } from "./admin.js";
 
 export const NODE_W = 176;
 export const NODE_H = 54;
@@ -43,7 +43,7 @@ const GAP = 30; // between the rows the nodes are laid out in
 // comes in from outside (source), what passes it on (control flow),
 // what picks by rules (filter), what makes a new payload of it
 // (transform), and where it ends (sink).
-export const ROLES = { source: "Source", flow: "Control flow", filter: "Filter", transform: "Transform", sink: "Sink" };
+export const ROLES = { source: _("Source"), flow: _("Control flow"), filter: _("Filter"), transform: _("Transform"), sink: _("Sink") };
 export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
@@ -158,7 +158,7 @@ export function payloadColor(kinds) {
 
 export function payloadText(kinds) {
   const list = asList(kinds);
-  return list.map((k) => PAYLOADS[k] || k).join(" or ");
+  return list.map((k) => PAYLOADS[k] || k).join(_(" or "));
 }
 
 // typeOf tells what a node is typed with: in, the kinds its input port is
@@ -184,9 +184,9 @@ export function typeOf(n) {
 
 // mend says what to put between two nodes whose kinds disagree.
 function mend(out, accepts) {
-  if (out.includes("any") && accepts.includes("bdf")) return "put a convert node between";
-  if (out.includes("data") && accepts.includes("bdf")) return "put a template node between";
-  if (out.includes("bdf") && accepts.includes("data")) return "a template node takes data: send documents elsewhere";
+  if (out.includes("any") && accepts.includes("bdf")) return _("put a convert node between");
+  if (out.includes("data") && accepts.includes("bdf")) return _("put a template node between");
+  if (out.includes("bdf") && accepts.includes("data")) return _("a template node takes data: send documents elsewhere");
   return "";
 }
 
@@ -215,8 +215,8 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert, sign", sink: "display, printer, archive, sink, export" };
-  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
+  const of = { source: _("endpoint, CUPS server"), flow: _("queue, class, inbox"), filter: _("by rules"), transform: _("template, convert, sign"), sink: _("display, printer, archive, sink, export") };
+  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), _("{role} ({kinds})", { role: label, kinds: of[role] }))), item(dot(PAYLOAD_COLOR.bdf, "#fff"), _(".bdf document")), item(dot(PAYLOAD_COLOR.data, "#fff"), _("data (for a template node)")), item(dot(PAYLOAD_COLOR.any, "#fff"), _("any file as received (for a convert node)")), item(dot(MIXED_COLOR, "#fff"), _("several kinds")), item(dot(ANY_KIND_COLOR, "#fff"), _("takes any kind")), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), _("not typed yet: its first edge types it")), item(line(BROKEN_COLOR, "6 4"), _("no longer connects: the node after does not take what reaches it")));
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
@@ -402,18 +402,20 @@ export function createCanvas(svg, opts = {}) {
   // path back (a cycle), and what the edge would carry is taken by the
   // node after it (the server checks the same when the node is put).
   function canConnect(a, b) {
-    if (a.name === b.name) return { ok: false, why: "a node does not send to itself" };
-    if (b.kind === "cups") return { ok: false, why: `${b.name} is a CUPS server: it takes what computers print there, not what other nodes send` };
-    if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: `a display's port sets its fallback printer; ${b.name} is a ${(KINDS[b.kind] || b.kind).toLowerCase()}` };
-    if (edgesOf(a).some((e) => e.to === b.name)) return { ok: false, already: true, why: `${a.name} sends to ${b.name} already` };
-    if (reaches(b.name, a.name)) return { ok: false, why: `a cycle: ${b.name} leads back to ${a.name}` };
+    if (a.name === b.name) return { ok: false, why: _("a node does not send to itself") };
+    if (b.kind === "cups") return { ok: false, why: _("{node} is a CUPS server: it takes what computers print there, not what other nodes send", { node: b.name }) };
+    if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: _("a display's port sets its fallback printer; {node} is a {kind}", { node: b.name, kind: (KINDS[b.kind] || b.kind).toLowerCase() }) };
+    if (edgesOf(a).some((e) => e.to === b.name)) return { ok: false, already: true, why: _("{from} sends to {to} already", { from: a.name, to: b.name }) };
+    if (reaches(b.name, a.name)) return { ok: false, why: _("a cycle: {to} leads back to {from}", { to: b.name, from: a.name }) };
     const out = typeOf(a).out;
     const tb = typeOf(b);
     const bad = out.filter((k) => !tb.accepts.includes(k));
     if (bad.length) {
-      const takes = tb.accepts.length ? `takes ${payloadText(tb.accepts)}` : "takes nothing now: the nodes after it take different kinds";
       const fix = mend(out, tb.accepts);
-      return { ok: false, why: `${b.name} ${takes}, but ${a.name} carries ${payloadText(out)}${fix ? ": " + fix : ""}` };
+      const why = tb.accepts.length
+        ? _("{to} takes {takes}, but {from} carries {carries}", { to: b.name, takes: payloadText(tb.accepts), from: a.name, carries: payloadText(out) })
+        : _("{to} takes nothing now (the nodes after it take different kinds), but {from} carries {carries}", { to: b.name, from: a.name, carries: payloadText(out) });
+      return { ok: false, why: why + (fix ? _(": {fix}", { fix }) : "") };
     }
     return { ok: true };
   }
@@ -425,14 +427,14 @@ export function createCanvas(svg, opts = {}) {
   function counts(n) {
     const l = live ? live.nodes[n.name] || {} : n;
     const out = [];
-    if (l.held) out.push(`${l.held} held`);
-    if (l.open) out.push(`${l.open} open`);
-    if (l.pending) out.push(`${l.pending} waiting`);
-    if (l.failed) out.push(`${l.failed} failed`);
-    if (l.kept) out.push(`${l.kept} kept`);
-    if (l.listed) out.push(`${l.listed} listed`);
-    if (!live && n.devices) out.push(`${n.devices} device${n.devices === 1 ? "" : "s"}`);
-    if (live && l.recent) out.push(`${l.recent}/h`);
+    if (l.held) out.push(_("{n} held", { n: l.held }));
+    if (l.open) out.push(_("{n} open", { n: l.open }));
+    if (l.pending) out.push(_("{n} waiting", { n: l.pending }));
+    if (l.failed) out.push(_("{n} failed", { n: l.failed }));
+    if (l.kept) out.push(_("{n} kept", { n: l.kept }));
+    if (l.listed) out.push(_("{n} listed", { n: l.listed }));
+    if (!live && n.devices) out.push(n.devices === 1 ? _("{n} device", { n: 1 }) : _("{n} devices", { n: n.devices }));
+    if (live && l.recent) out.push(_("{n}/h", { n: l.recent }));
     return out;
   }
 
@@ -503,13 +505,17 @@ export function createCanvas(svg, opts = {}) {
         let what;
         if (broken) {
           const fix = mend(asList(broken), typeOf(nodes[e.to]).accepts);
-          what = `${n.name} → ${e.to} no longer connects: ${e.to} takes ${payloadText(nodes[e.to].takes)}, but ${payloadText(broken)} reaches it here${fix ? ": " + fix : ""}, or remove the edge`;
-        } else if (e.kind === "fallback") what = `${n.name} prints on ${e.to} as a fallback`;
-        else if (e.kind === "original") what = `${n.name} sends what it took, as it was, to ${e.to}: ${kinds.length ? payloadText(kinds) : "not typed yet"} (traced with what it made)`;
-        else if (e.kind === "error") what = `${n.name} → ${e.to} on error: what reached ${n.name}, when its send or step fails for good`;
-        else if (e.kind === "member") what = `${e.to} is a member of ${n.name}: ${kinds.length ? payloadText(kinds) : "not typed yet"}`;
-        else what = `${n.name} → ${e.to}: ${kinds.length ? payloadText(kinds) : "not typed yet"}`;
-        title.textContent = editable ? what + " (click to remove)" : what;
+          const args = { from: n.name, to: e.to, takes: payloadText(nodes[e.to].takes), kinds: payloadText(broken), fix };
+          what = fix ? _("{from} → {to} no longer connects: {to} takes {takes}, but {kinds} reaches it here: {fix}, or remove the edge", args) : _("{from} → {to} no longer connects: {to} takes {takes}, but {kinds} reaches it here; remove the edge", args);
+        } else {
+          const carried = kinds.length ? payloadText(kinds) : _("not typed yet");
+          if (e.kind === "fallback") what = _("{from} prints on {to} as a fallback", { from: n.name, to: e.to });
+          else if (e.kind === "original") what = _("{from} sends what it took, as it was, to {to}: {kinds} (traced with what it made)", { from: n.name, to: e.to, kinds: carried });
+          else if (e.kind === "error") what = _("{from} → {to} on error: what reached {from}, when its send or step fails for good", { from: n.name, to: e.to });
+          else if (e.kind === "member") what = _("{to} is a member of {from}: {kinds}", { from: n.name, to: e.to, kinds: carried });
+          else what = `${n.name} → ${e.to}: ${carried}`;
+        }
+        title.textContent = editable ? _("{edge} (click to remove)", { edge: what }) : what;
         hit.append(title);
         if (editable) {
           hit.addEventListener("pointerdown", (ev) => ev.stopPropagation());
@@ -532,7 +538,7 @@ export function createCanvas(svg, opts = {}) {
       const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
       const kind = KINDS[draft.kind] || draft.kind;
       const lines = draftNote() ? wrap(draftNote(), NODE_W - 20, MAX_LINES) : [];
-      box(g, draft.kind, draftLabel() || "new " + kind.toLowerCase(), kind, "not saved yet", lines, heightOfLines(lines.length), 22, 30);
+      box(g, draft.kind, draftLabel() || _("new {kind}", { kind: kind.toLowerCase() }), kind, _("not saved yet"), lines, heightOfLines(lines.length), 22, 30);
       g.firstChild.setAttribute("stroke", "#4f46e5");
       g.firstChild.setAttribute("stroke-width", "2");
       g.firstChild.setAttribute("stroke-dasharray", "6 4");
@@ -550,11 +556,15 @@ export function createCanvas(svg, opts = {}) {
 
   // portTitle tells what an input port takes, as it is typed now.
   function portTitle(n, t) {
-    if (t.dead) return "Nothing fits here: the nodes after it take different kinds";
-    if (ENTRY.has(n.kind)) return `Other nodes may send ${t.accepts.length === ALL.length ? "any kind" : payloadText(t.accepts)} here`;
-    if (t.in.length) return `Takes ${payloadText(t.in)}` + (PASSES_ON.has(n.kind) && !t.anyKind ? (asList(n.emits).length ? " (what reaches it)" : " (what is after it takes)") : "");
-    if (t.anyKind) return "Takes any kind";
-    return "Not typed yet: the first edge, in or out, types it";
+    if (t.dead) return _("Nothing fits here: the nodes after it take different kinds");
+    if (ENTRY.has(n.kind)) return t.accepts.length === ALL.length ? _("Other nodes may send any kind here") : _("Other nodes may send {kinds} here", { kinds: payloadText(t.accepts) });
+    if (t.in.length) {
+      const kinds = payloadText(t.in);
+      if (!PASSES_ON.has(n.kind) || t.anyKind) return _("Takes {kinds}", { kinds });
+      return asList(n.emits).length ? _("Takes {kinds} (what reaches it)", { kinds }) : _("Takes {kinds} (what is after it takes)", { kinds });
+    }
+    if (t.anyKind) return _("Takes any kind");
+    return _("Not typed yet: the first edge, in or out, types it");
   }
 
   // nodeBox draws a node: its title, its kind and what is at it, an input
@@ -616,8 +626,8 @@ export function createCanvas(svg, opts = {}) {
     }
     const title = svgEl("title");
     const typed = [];
-    if (t.in.length || t.anyKind) typed.push("takes " + (t.anyKind ? "any kind" : payloadText(t.in)));
-    if (t.out.length) typed.push("sends on " + payloadText(t.out));
+    if (t.in.length || t.anyKind) typed.push(t.anyKind ? _("takes any kind") : _("takes {kinds}", { kinds: payloadText(t.in) }));
+    if (t.out.length) typed.push(_("sends on {kinds}", { kinds: payloadText(t.out) }));
     title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}${n.description ? "\n" + n.description : ""}`;
     g.append(title);
     const l = live ? live.nodes[n.name] : null;
@@ -640,7 +650,9 @@ export function createCanvas(svg, opts = {}) {
       // CUPS server's port, applications POST to an endpoint
       const inArrow = svgEl("path", { d: `M -30 ${h / 2} L -8 ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
-      x.textContent = n.kind === "cups" ? `IPP${n.port ? " on port " + n.port : ""}: computers print here, and the job goes on along the edges` : n.kind === "s3-trigger" ? "REST: an S3 event's reference is POSTed here, and the object read goes on along the edges" : `REST${n.port ? " on port " + n.port : ""}: applications POST here, and the job goes on along the edges`;
+      if (n.kind === "cups") x.textContent = n.port ? _("IPP on port {port}: computers print here, and the job goes on along the edges", { port: n.port }) : _("IPP: computers print here, and the job goes on along the edges");
+      else if (n.kind === "s3-trigger") x.textContent = _("REST: an S3 event's reference is POSTed here, and the object read goes on along the edges");
+      else x.textContent = n.port ? _("REST on port {port}: applications POST here, and the job goes on along the edges", { port: n.port }) : _("REST: applications POST here, and the job goes on along the edges");
       inArrow.append(x);
       g.append(inArrow);
     }
@@ -648,7 +660,7 @@ export function createCanvas(svg, opts = {}) {
       // what an export lists is fetched from outside: GET /out/<name>
       const outArrow = svgEl("path", { d: `M ${NODE_W + 8} ${h / 2} L ${NODE_W + 30} ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
-      x.textContent = n.kind === "export" ? "REST: applications and people fetch the documents listed here (GET /out/" + n.name + ")" : `${n.kind === "cups-out" ? "IPP: printed to a CUPS server's queue" : "Printed on the printer"}${n.url ? ", " + n.url : ""}`;
+      x.textContent = n.kind === "export" ? _("REST: applications and people fetch the documents listed here ({request})", { request: "GET /out/" + n.name }) : (n.kind === "cups-out" ? _("IPP: printed to a CUPS server's queue") : _("Printed on the printer")) + (n.url ? ", " + n.url : "");
       outArrow.append(x);
       g.append(outArrow);
     }
@@ -681,8 +693,9 @@ export function createCanvas(svg, opts = {}) {
         port.setAttribute("data-port", n.name);
       }
       const x = svgEl("title");
-      const sends = t.out.length ? `${asList(n.emits).length ? "Sends on" : "Carries"} ${payloadText(t.out)}` : "Not typed yet: the first edge types it";
-      x.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an export lists it). " : "Drag onto a node to connect. ") + sends : sends;
+      const sends = t.out.length ? (asList(n.emits).length ? _("Sends on {kinds}", { kinds: payloadText(t.out) }) : _("Carries {kinds}", { kinds: payloadText(t.out) })) : _("Not typed yet: the first edge types it");
+      const how = n.kind === "display" ? _("Drag onto a printer: the fallback printer.") : n.kind === "class" ? _("Drag onto a node: a member.") : n.kind === "archive" ? _("Drag onto a node: what the archive wrote goes on there (an export lists it).") : _("Drag onto a node to connect.");
+      x.textContent = editable ? sentences(how, sends) : sends;
       port.append(x);
       g.append(port);
     }
