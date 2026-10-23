@@ -24,9 +24,20 @@ curl -X POST -H "Authorization: Bearer bdfk_…" \
      "https://<host>/in/erp?name=statement&meta.dept=sales"
 ```
 
+or, as a form:
+
+```sh
+curl -H "Authorization: Bearer bdfk_…" \
+     -F 'meta={"dept": "sales"};type=application/json' \
+     -F file=@statement.pdf \
+     https://<host>/in/erp
+```
+
 - The body is the document, or the data for an endpoint with `accept: data`; the name (`?name=`) and the `Content-Type` tell its format when the content does not.
 - `?name=` names the job; `?user=` names who sent it, shown as "(as …)".
 - `X-Meta-<Key>` headers and `?meta.<key>=` parameters are the job's metadata ([Metadata](flow.md#metadata)).
+- Or the body is `multipart/form-data`, told by its `Content-Type`: the document in the part `file`, whose name and `Content-Type` are the document's (`?name=` over the name), and the metadata as a JSON object in the part `meta`, over the headers' and the parameters'. An [HTTP (push)](nodes.md#http) node of another Docflow sends either.
+- Without `?name=`, a body as it is takes its name from `Content-Disposition` (`attachment; filename="statement.pdf"`).
 - The answer is the job (201), with its number and its legs so far. A document of a format the endpoint does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
 - An [assert](nodes.md#assert) right after the endpoint checks the metadata before the answer: a job that fails is refused (422) with `{"error": "…", "job": <number>, "failures": [{"node", "key", "error"}]}`, and kept, aborted, for its legs to show what failed. A CUPS server answers the same as IPP's `client-error-bad-request`, with what failed as the status message.
 

@@ -12,9 +12,9 @@ The canvas draws the nodes where the administrator placed them. A node is a whit
 | Control flow | queue, class, inbox |
 | Filter | filter |
 | Transform | template, convert |
-| Sink | display, printer, archive, sink, export |
+| Sink | display, printer, archive, sink, HTTP (pull) |
 
-The ports and the edges are colored by what flows along them ([Kinds of payload](flow.md#kinds)): blue a `.bdf` document, green data, amber any file as received, purple several kinds. A port not typed yet is hollow and dashed: a queue, a class, a filter or an inbox takes the kind of its first edge. An edge drawn dashed and red no longer connects ([Broken edges](flow.md#broken)). An export has a dashed arrow going out: applications and people fetch what it lists. The legend under the canvas names the colors.
+The ports and the edges are colored by what flows along them ([Kinds of payload](flow.md#kinds)): blue a `.bdf` document, green data, amber any file as received, cyan a stocked file (from an inbox or an archive to HTTP (pull)), purple several kinds. A port not typed yet is hollow and dashed: a queue, a class, a filter or an inbox takes the kind of its first edge. An edge drawn dashed and red no longer connects ([Broken edges](flow.md#broken)). An export has a dashed arrow going out: applications and people fetch what it lists. The legend under the canvas names the colors.
 
 The activity of the jobs you may see runs on it — yours and your groups'; an administrator sees everyone's:
 
@@ -30,7 +30,7 @@ Without the role topology, the page only looks. Click a node, and the sidebar sh
 - **Print here**, when you may send to the node ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); otherwise "You may not print here";
 - **Jobs here**: your jobs that were sent to the node or reached it, with their state, who sent them, when and their route; Document downloads one, and Reprint here sends it again to this node, as a new job of yours.
 
-A sink also shows the latest documents it kept, an export the entries listed there that you may read ([Exports](exports.md)), and a CUPS server (source) how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).
+A sink also shows the latest documents it kept, an export the entries listed there that you may read ([HTTP (pull)](exports.md)), and a CUPS server (source) how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).
 
 ## The editor {#editor}
 
@@ -64,7 +64,7 @@ The sidebar of a saved node has two tabs. The one chosen stays as you click from
 - of a printer or a CUPS server (sink), where this system prints the jobs, over IPP (a printer also over 9100 or LPD) ([CUPS server (sink)](nodes.md#cups-out));
 - of an endpoint, the request applications send and the apps allowed, and its key: Rotate key makes a new one and shows it once ([Endpoints](entries.md#endpoints)); of an S3 trigger, the request an S3 event's reference is posted with, and its key;
 - of a display, its devices, when each was last seen, and Add a device, which shows a one-time code and its QR code ([Display boards](displays.md));
-- of an export, the URLs readers fetch from, and the entries listed there ([Exports](exports.md));
+- of an export, the URLs readers fetch from, and the entries listed there ([HTTP (pull)](exports.md));
 - links to the jobs sent to it (Admin → Jobs), to the inbox it is (Admin → Inboxes), to the deliveries waiting at it (Admin → Deliveries), and the OpenAPI document of an entry or an export;
 - of a sink, the latest documents it kept, with their pages; of a printer with a preview, what the fake printer received ([Printer](nodes.md#printer)).
 

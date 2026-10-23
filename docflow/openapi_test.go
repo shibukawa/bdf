@@ -83,8 +83,14 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("data schema %v", anyOf)
 	}
 	if content := keysOf(dig(in, "requestBody", "content")); !slices.Equal(content, []string{"application/json", "application/vnd.apache.parquet",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/yaml", "text/csv"}) {
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/yaml", "multipart/form-data", "text/csv"}) {
 		t.Fatalf("data content %v", content)
+	}
+	// or the same in the part file of a multipart body, after the part meta
+	if got := dig(in, "requestBody", "content", "multipart/form-data", "encoding", "file", "contentType"); got != "application/json, application/vnd.apache.parquet, "+
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/yaml, text/csv" ||
+		dig(in, "requestBody", "content", "multipart/form-data", "schema", "properties", "meta", "type") != "object" {
+		t.Fatalf("multipart %v", dig(in, "requestBody", "content", "multipart/form-data"))
 	}
 	slip := dig(doc, "components", "schemas", "TemplateData.forms.slip").(map[string]any)
 	if slip["type"] != "object" || dig(slip, "properties", "pages") == nil || slip["$schema"] != nil || !strings.Contains(slip["description"].(string), "?meta.doc_type=slip") {
@@ -114,7 +120,7 @@ func TestOpenAPI(t *testing.T) {
 	}
 	// documents: the media types of the formats it takes
 	docs := dig(doc, "paths", "/in/docs-in", "post", "requestBody", "content")
-	if got := keysOf(docs); !slices.Equal(got, []string{"application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/*"}) {
+	if got := keysOf(docs); !slices.Equal(got, []string{"application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/*", "multipart/form-data"}) {
 		t.Fatalf("document content %v", got)
 	}
 	// an export's entries carry its fields

@@ -9,8 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -103,9 +107,9 @@ func (m *Manager) Endpoint(ctx context.Context, name, key string) (*Node, error)
 	return n, nil
 }
 
-// serveIn takes a request to an endpoint: a document, or data (the body
-// as it is), with the sender's metadata in X-Meta-* headers and ?meta.*
-// parameters. What the endpoint refuses (ErrFormat) is recorded in the
+// serveIn takes a request to an endpoint: a document, or data, as the
+// body or in a multipart/form-data body (readBody), with the sender's
+// metadata. What the endpoint refuses (ErrFormat) is recorded in the
 // audit log.
 func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -148,7 +152,7 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(f.Name())
 	defer f.Close()
 	q := r.URL.Query()
-	body, name, meta, contentType := r.Body, q.Get("name"), metaOfRequest(r), r.Header.Get("Content-Type")
+	var in *sentBody
 	if k := kindNamed(ep.Kind); k != nil && k.Fetch != nil {
 		// the body names the document (an S3 event): the node reads it
 		ref, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -162,22 +166,22 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer got.Body.Close()
-		body, name, contentType = got.Body, firstOr(name, got.Name), ""
-		for k, v := range got.Meta {
-			meta[k] = v
+		in = &sentBody{Name: firstOr(q.Get("name"), got.Name), Meta: metaOfRequest(r)}
+		maps.Copy(in.Meta, got.Meta)
+		if in.Size, err = io.Copy(f, io.LimitReader(got.Body, h.m.o.MaxDocument+1)); err != nil {
+			h.writeErr(w, errors.Join(ErrInvalid, err))
+			return
 		}
-	}
-	n, err := io.Copy(f, io.LimitReader(body, h.m.o.MaxDocument+1))
-	if err != nil {
-		h.writeErr(w, errors.Join(ErrInvalid, err))
+	} else if in, err = h.m.readBody(r, f); err != nil {
+		h.writeErr(w, err)
 		return
 	}
-	if n > h.m.o.MaxDocument {
+	if in.Size > h.m.o.MaxDocument {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the document is too large"})
 		return
 	}
-	j, err := h.m.Submit(ctx, ep.Name, Input{Name: name, By: by, ClaimedUser: q.Get("user"), Source: "endpoint", Doc: f, Size: n,
-		ContentType: contentType, Meta: meta})
+	j, err := h.m.Submit(ctx, ep.Name, Input{Name: in.Name, By: by, ClaimedUser: q.Get("user"), Source: "endpoint", Doc: f, Size: in.Size,
+		ContentType: in.ContentType, Meta: in.Meta})
 	if err != nil {
 		if errors.Is(err, ErrFormat) {
 			h.m.audit(ctx, by.Label(), "refuse-document", ep.Name, err.Error())
@@ -186,6 +190,93 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, j)
+}
+
+// sentBody is what a request sent: the document's size (more than
+// MaxDocument: too large, and not all read), its name and content type,
+// and the sender's metadata.
+type sentBody struct {
+	Size        int64
+	Name        string
+	ContentType string
+	Meta        map[string]any
+}
+
+// readBody reads the document a request sends into f, as the request's
+// Content-Type says: the body as it is, the metadata in X-Meta-* headers
+// and ?meta.* parameters; or multipart/form-data, whose part file is the
+// document (its name and type the part's, ?name= over the name) and whose
+// part meta, a JSON object, is metadata over the headers' and the
+// parameters'. docflow/io/http sends either (body: direct or multipart).
+func (m *Manager) readBody(r *http.Request, f io.Writer) (*sentBody, error) {
+	in := &sentBody{Name: r.URL.Query().Get("name"), ContentType: r.Header.Get("Content-Type"), Meta: metaOfRequest(r)}
+	ct, params, _ := mime.ParseMediaType(in.ContentType)
+	if ct != "multipart/form-data" {
+		if in.Name == "" {
+			in.Name = fileNameOf(r.Header.Get("Content-Disposition"))
+		}
+		n, err := io.Copy(f, io.LimitReader(r.Body, m.o.MaxDocument+1))
+		if err != nil {
+			return nil, errors.Join(ErrInvalid, err)
+		}
+		in.Size = n
+		return in, nil
+	}
+	if params["boundary"] == "" {
+		return nil, fmt.Errorf("%w: a multipart body without a boundary", ErrInvalid)
+	}
+	mr := multipart.NewReader(r.Body, params["boundary"])
+	var meta map[string]any
+	file := false
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, errors.Join(ErrInvalid, err)
+		}
+		switch name := p.FormName(); {
+		case name == "meta" && meta == nil:
+			// the JSON of the metadata is within twice what it may hold
+			b, err := io.ReadAll(io.LimitReader(p, 2*maxMetaBytes+1))
+			if err != nil {
+				return nil, errors.Join(ErrInvalid, err)
+			}
+			if len(b) > 2*maxMetaBytes {
+				return nil, fmt.Errorf("%w: the part meta is larger than %d bytes", ErrInvalid, 2*maxMetaBytes)
+			}
+			if err := json.Unmarshal(b, &meta); err != nil || meta == nil {
+				return nil, fmt.Errorf("%w: the part meta is a JSON object of the metadata", ErrInvalid)
+			}
+		case name == "file" && !file:
+			file = true
+			in.Name, in.ContentType = firstOr(in.Name, p.FileName()), p.Header.Get("Content-Type")
+			if in.Size, err = io.Copy(f, io.LimitReader(p, m.o.MaxDocument+1)); err != nil {
+				return nil, errors.Join(ErrInvalid, err)
+			}
+			if in.Size > m.o.MaxDocument {
+				return in, nil
+			}
+		default:
+			return nil, fmt.Errorf("%w: part %q: a multipart body has a part meta (a JSON object) and a part file, once each", ErrInvalid, name)
+		}
+	}
+	if !file {
+		return nil, fmt.Errorf("%w: a multipart body has the document in its part file", ErrInvalid)
+	}
+	maps.Copy(in.Meta, meta)
+	return in, nil
+}
+
+// fileNameOf is the file's name a Content-Disposition gives (filename,
+// or filename*), without its directories; "" when none.
+func fileNameOf(disposition string) string {
+	_, params, err := mime.ParseMediaType(disposition)
+	if err != nil || params["filename"] == "" {
+		return ""
+	}
+	return filepath.Base(params["filename"])
 }
 
 // formats answers the formats an endpoint may take.

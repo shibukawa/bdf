@@ -134,7 +134,8 @@ const (
 	// KindExport is an exit applications and people fetch documents from:
 	// it lists what an archive before it wrote, each entry under the
 	// owner its metadata names, and serves them at GET /out/<name>
-	// (export.go).
+	// (export.go). It is shown as HTTP (pull), beside the HTTP (push) of
+	// docflow/io/http.
 	KindExport = "export"
 	// KindSign signs the .bdf document that reaches it with the key of
 	// the manager, as a witness of who sent it, and sends it on
@@ -291,7 +292,8 @@ type Node struct {
 	// png or an svg); From, Recipients and MailSubject a mail's (smtp, and a
 	// notify node's by mail); Text a mail's text or a notification's;
 	// Path the key an s3 exit writes; Method and Headers an http exit's
-	// request; Via is how a notify node tells (slack, mail or http).
+	// request, and Body how it carries the document (direct or
+	// multipart); Via is how a notify node tells (slack, mail or http).
 	Format      string            `json:"format,omitempty"`
 	Page        int               `json:"page,omitempty"`
 	From        string            `json:"from,omitempty"`
@@ -301,6 +303,7 @@ type Node struct {
 	Path        string            `json:"path,omitempty"`
 	Method      string            `json:"method,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
+	Body        string            `json:"body,omitempty"`
 	Via         string            `json:"via,omitempty"`
 }
 
@@ -331,12 +334,12 @@ func (n *Node) flowEdges() []string {
 }
 
 // sends tells the kinds a node sends along each of its edges, given the
-// kinds that reach it: what it emits along the edges of its flow, what
-// reached it along OnError.
-func (n *Node) sends(in kinds) map[string]kinds {
+// kinds that reach it and the nodes by name: what it emits along the
+// edges of its flow, what reached it along OnError.
+func (n *Node) sends(in kinds, nodes map[string]*Node) map[string]kinds {
 	out := map[string]kinds{}
 	for _, to := range n.flowEdges() {
-		out[to] |= n.emitsTo(in, to)
+		out[to] |= n.emitsTo(in, to, nodes[to])
 	}
 	for _, to := range n.OnError {
 		out[to] |= in
@@ -607,6 +610,8 @@ type Item struct {
 	// discarded it (or canceled the job).
 	Released  *Release `json:"released,omitempty"`
 	Discarded *Mark    `json:"discarded,omitempty"`
+	// Listed are the HTTP (pull) nodes that list it while it is held.
+	Listed []string `json:"listed,omitempty"`
 }
 
 // Release is an item sent on from an inbox.

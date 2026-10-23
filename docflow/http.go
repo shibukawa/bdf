@@ -724,19 +724,18 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
-	n, err := io.Copy(f, io.LimitReader(r.Body, h.m.o.MaxDocument+1))
+	in, err := h.m.readBody(r, f)
 	if err != nil {
-		h.writeErr(w, errors.Join(ErrInvalid, err))
+		h.writeErr(w, err)
 		return
 	}
-	if n > h.m.o.MaxDocument {
+	if in.Size > h.m.o.MaxDocument {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the document is too large"})
 		return
 	}
-	q := r.URL.Query()
 	dest := r.PathValue("name")
-	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n,
-		ContentType: r.Header.Get("Content-Type"), Meta: metaOfRequest(r)})
+	j, err := h.m.Submit(r.Context(), dest, Input{Name: in.Name, By: by, ClaimedUser: r.URL.Query().Get("user"), Source: "api", Doc: f, Size: in.Size,
+		ContentType: in.ContentType, Meta: in.Meta})
 	if err != nil {
 		h.writeErr(w, err)
 		return

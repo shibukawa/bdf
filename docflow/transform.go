@@ -406,8 +406,8 @@ func (m *Manager) continueWith(ctx context.Context, d *Delivery, n *Node, p *Pay
 // continueFrom routes the job on from a node whose step is done, with a
 // payload: one the node made (made: the leg's Made, and the payload the
 // node took goes along Original), or the one it took (an archive, which
-// sends on what it wrote, archived, with the trace it came with).
-func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Payload, made bool, archived *archiveRef) error {
+// sends on what it wrote, stocked there, with the trace it came with).
+func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Payload, made bool, stock *stockRef) error {
 	j, err := m.JobOfNumber(ctx, d.Job)
 	if err != nil {
 		return err
@@ -418,7 +418,7 @@ func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Pay
 	if j.payload(p.ID) == nil {
 		j.Payloads = append(j.Payloads, *p)
 	}
-	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived, trace: d.Trace, cause: d.Cause}
+	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), stock: stock, trace: d.Trace, cause: d.Cause}
 	if made {
 		in := j.payload(d.Payload)
 		if in == nil {

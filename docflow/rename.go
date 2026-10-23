@@ -183,7 +183,10 @@ func (m *Manager) moveState(ctx context.Context, n *Node, to string) error {
 			}
 		}
 	case KindExport:
-		return m.moveExport(ctx, from, to)
+		if err := m.moveExport(ctx, from, to); err != nil {
+			return err
+		}
+		return m.moveListedAt(ctx, from, to)
 	}
 	return nil
 }

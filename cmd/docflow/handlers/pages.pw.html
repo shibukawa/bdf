@@ -335,10 +335,10 @@ export component Topology(account: Account): html {
                       <PaletteKind kind="cups-out" name="CUPS server (sink)">printed to a queue of a CUPS server, over IPP</PaletteKind>
                       <PaletteKind kind="archive" name="Archive">written once, never changed</PaletteKind>
                       <PaletteKind kind="sink" name="Sink">keeps the latest documents, to look at</PaletteKind>
-                      <PaletteKind kind="export" name="Export">lists what an archive wrote, for applications and people to fetch</PaletteKind>
+                      <PaletteKind kind="export" name="HTTP (pull)">fetched by applications and people from an inbox or an archive</PaletteKind>
+                      <PaletteKind kind="http" name="HTTP (push)">sent to a web service, as the body or as multipart</PaletteKind>
                       <PaletteKind kind="smtp" name="Mail (SMTP)">mails it as an attachment</PaletteKind>
                       <PaletteKind kind="s3" name="S3">written to a bucket, once</PaletteKind>
-                      <PaletteKind kind="http" name="HTTP">sent to a web service</PaletteKind>
                     </PaletteGroup>
                   </ul>
                 </div>
@@ -351,7 +351,7 @@ export component Topology(account: Account): html {
             </div>
             {if account.topology}
               <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
-              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title="The OpenAPI document of every endpoint and export">OpenAPI</a>
+              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title="The OpenAPI document of every endpoint and HTTP (pull) node">OpenAPI</a>
             {/if}
             <span id="live" class="badge badge-ghost badge-sm"></span>
             {if account.topology}
@@ -415,7 +415,7 @@ export component Apps(account: Account): html {
         <div class="flex flex-wrap items-center gap-3">
           <h2 class="card-title">Apps</h2>
           <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
-          <span class="text-sm text-base-content/60">Applications with credentials of their own. A backend takes a token at <code class="font-mono">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class="font-mono">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts.</span>
+          <span class="text-sm text-base-content/60">Applications with credentials of their own. A backend takes a token at <code class="font-mono">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class="font-mono">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts.</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">

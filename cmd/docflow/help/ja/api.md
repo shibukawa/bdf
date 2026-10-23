@@ -25,7 +25,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 |---|---|
 | `GET /api/my/jobs?limit=` | 呼び手が見られるジョブ。自分のものと自分のグループのもの（管理者はすべてのジョブ） |
 | `GET /api/destinations` | 呼び手が送れるノード |
-| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。201 とジョブ |
+| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。エンドポイントと同じく `multipart/form-data` のボディも受け取ります。201 とジョブ |
 | `POST /api/locations/<display>/slips` | 同じものをディスプレイに。古い名前です |
 | `GET /api/destinations/<node>/jobs?limit=` | ノードに送られたジョブ（管理者） |
 | `GET /api/jobs/<n>` | ジョブ。ペイロード、メタデータ、レグ |
@@ -85,15 +85,15 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `POST /api/deliveries/<id>/retry` | 今すぐ送り直す |
 | `POST /api/tick` | やるべきことを行う（[ティック](inboxes.md#tick)）。ティックトークン、スコープ `tick` のアプリ、管理トークン、または役割 `topology` の人 |
 
-## エクスポート {#exports}
+## HTTP (pull) {#exports}
 
-バックエンドのトークン、フロントエンドが得た本人のトークン、またはページのセッションで読みます（[エクスポート](exports.md)）。
+バックエンドのトークン、フロントエンドが得た本人のトークン、またはページのセッションで読みます（[HTTP (pull)](exports.md)）。
 
 | | |
 |---|---|
 | `GET /out/<name>?owner=&limit=` | 読み手が読めるエントリ。新しい順 |
 | `GET /out/<name>/<job>` | 1 つのエントリ |
-| `GET /out/<name>/<job>/record` | アーカイブのジョブの記録 |
+| `GET /out/<name>/<job>/record` | アーカイブのジョブの記録（インボックスのエントリならジョブ） |
 | `GET /out/<name>/<job>/document` | アーカイブが書いたとおりの文書 |
 
 ## アプリと監査 {#apps}

@@ -50,7 +50,7 @@ A leg's state is what the node did with the job:
 | `held`, `released`, `discarded` | inbox | held; sent on by a person; discarded by a person, or by a cancellation |
 | `pending`, `done`, `failed`, `canceled` | printer, archive, template, convert | a delivery: waiting or being sent; done; given up; withdrawn by a cancellation |
 | `kept` | sink | among the latest the sink keeps |
-| `listed` | export | listed for its owner, who the leg names ([Exports](exports.md)) |
+| `listed` | HTTP (pull) | listed for its owner, who the leg names ([HTTP (pull)](exports.md)) |
 | `dropped` | filter, branch | no rule or case fit, and there is no otherwise or default |
 | `refused` | assert | the job failed a check, and the error says which ([Checks](flow.md#checks)); right after the node the job was sent to, its sender was refused |
 | `error` | any | the node could not take the job, and the error says why: a kind of payload it does not take, a node that is gone |

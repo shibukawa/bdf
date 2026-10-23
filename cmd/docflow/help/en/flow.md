@@ -4,19 +4,21 @@ What a job carries along the edges and what goes with it: its payloads and their
 
 ## Kinds of payload {#kinds}
 
-What flows along an edge is of one of three kinds:
+What flows along an edge is of one of four kinds:
 
 | Kind | | Color |
 |---|---|---|
 | `bdf` | a `.bdf` document: what printers, displays and the pages show | blue |
 | `data` | data for a template: JSON, YAML, CSV, an Excel workbook or a Parquet file | green |
 | `any` | any other file as it was received — a PDF, an Office document, a picture — for a convert node or an archive | amber |
+| `stocked` | a stocked file, of any format: what an inbox holds or an archive wrote, read from there by an [HTTP (pull)](exports.md) node, which takes nothing else. Where it is kept is where it comes from and how long it is there: an inbox's while it holds the job, an archive's for good | cyan |
 
 What a node sends on:
 
 - an entry (an endpoint, a CUPS server) sends what its settings say: with `accept: data`, data; with `output: file`, the file as received; else the `.bdf` made of the document (the default);
 - a template node and a convert node send the `.bdf` they made, and along `original` what reached them, as it was;
 - a display sends what its fallback printer prints, `.bdf`;
+- an inbox and an archive send a stocked file to the HTTP (pull) nodes of their `to`, and what reached them to the others;
 - every other node sends on what reached it.
 
 What a node takes: a printer and a display take `bdf` only; a template node takes `data` only; every other node takes anything. What may be sent to a node now is narrower: what it takes, within what every node after it takes. A queue in front of a printer takes `.bdf` alone, as it would carry nothing else that the printer could print; a queue, a class, a filter or an inbox with no edge yet takes the kind of its first edge, on either side. The canvas colors the ports and the edges by these kinds — blue `bdf`, green `data`, amber `any`, purple several — and draws a port not typed yet hollow and dashed.
@@ -55,7 +57,7 @@ An archive writes the trace into its record, and an export into its entries, so 
 
 Metadata goes with a job through the topology. It comes from three sources, each key once, the later winning:
 
-1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an endpoint or to the API, and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
+1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an endpoint or to the API, and the JSON object in the part `meta` of its `multipart/form-data` body ([Endpoints](entries.md#endpoints)), and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
 2. **The entry's.** The `meta` of the endpoint or the CUPS server the job came in at.
 3. **The manager's**, under keys that start with `$`, which a sender cannot write: `$job` (the number), `$received` (when), `$entry` (the node the job was sent to), `$source` (the way it came in), `$sender` and `$sender_kind` (who, as verified: a person, an app, a token, an endpoint, anonymous), `$file` (the job's name).
 

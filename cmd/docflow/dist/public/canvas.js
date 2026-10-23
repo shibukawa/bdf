@@ -71,8 +71,11 @@ const ICONS = {
   "cups-out": ["M3 5h12v6H3z", "M3 13h12v6H3z", "M6 8h.01", "M6 16h.01", "M17 12h5", "M19 9l3 3-3 3"],
   archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
   sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
-  // a tray with an arrow going out: documents fetched from outside
+  // the two HTTP exits, on the same tray: HTTP (pull) an arrow going up
+  // out of it, documents fetched from outside; HTTP (push) an arrow
+  // turning out to the right, documents sent to a web service
   export: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 3v12", "M7 8l5-5 5 5"],
+  http: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 15V9a2 2 0 0 1 2-2h7", "M17 3l4 4-4 4"],
 };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer, an archive what it wrote)
@@ -85,6 +88,11 @@ const EXIT = new Set(["export", "printer", "cups-out"]);
 // REST, a CUPS server's IPP port, an S3 event's reference), drawn as an
 // arrow coming in
 const ENTRY = new Set(["endpoint", "cups", "s3-trigger"]);
+// the kinds that keep what reaches them (kinds.go: stocks): along their
+// to, to HTTP (pull), they send a stocked file, and what reaches them to
+// the others; the kinds that take a stocked file alone
+const STOCKS = new Set(["inbox", "archive"]);
+const TAKES_STOCKED = new Set(["export"]);
 // the kinds of node that send on what reaches them: typed by their first
 // edge, on either side (kinds.go: passesOn)
 const PASSES_ON = new Set(["queue", "class", "filter", "assert", "branch", "inbox", "endpoint", "cups", "s3-trigger", "archive"]);
@@ -237,8 +245,8 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "filter, assert, branch", transform: "template, convert, sign", sink: "display, printer, archive, sink, export" };
-  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
+  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "filter, assert, branch", transform: "template, convert, sign", sink: "display, printer, archive, sink, HTTP (pull)" };
+  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(PAYLOAD_COLOR.stocked, "#fff"), "stocked file: what an inbox holds or an archive wrote (for HTTP (pull))"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
@@ -438,6 +446,9 @@ export function createCanvas(svg, opts = {}) {
     if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: `a display's port sets its fallback printer; ${b.name} is a ${(KINDS[b.kind] || b.kind).toLowerCase()}` };
     if (edgesOf(a).some((e) => e.to === b.name && (!port || e.port === port))) return { ok: false, already: true, why: `${a.name} sends to ${b.name} already` };
     if (reaches(b.name, a.name)) return { ok: false, why: `a cycle: ${b.name} leads back to ${a.name}` };
+    // HTTP (pull) takes a stocked file, which an inbox or an archive
+    // sends whatever reaches it
+    if (TAKES_STOCKED.has(b.kind)) return STOCKS.has(a.kind) ? { ok: true } : { ok: false, why: `${b.name} (HTTP (pull)) takes a stocked file, which only an inbox or an archive sends: put one between` };
     const out = typeOf(a).out;
     const tb = typeOf(b);
     const bad = out.filter((k) => !tb.accepts.includes(k));
@@ -532,7 +543,8 @@ export function createCanvas(svg, opts = {}) {
         // what is after it): colored by that; broken when the node after
         // it does not take what reaches it along it
         const broken = (n.broken || {})[e.to];
-        const kinds = e.kind === "fallback" ? ["bdf"] : e.kind === "original" ? asList(n.reaches) : e.kind === "error" ? t.in : t.out;
+        const stocked = e.kind === "to" && STOCKS.has(n.kind) && TAKES_STOCKED.has(nodes[e.to].kind);
+        const kinds = stocked ? ["stocked"] : e.kind === "fallback" ? ["bdf"] : e.kind === "original" ? asList(n.reaches) : e.kind === "error" ? t.in : t.out;
         const color = broken ? BROKEN_COLOR : payloadColor(kinds);
         const line = svgEl("path", { d, fill: "none", stroke: color, "stroke-width": broken ? "2.5" : kinds.length ? "2" : "1.5", "marker-end": arrow(color, e.kind === "member"), "pointer-events": "none" });
         if (broken) line.setAttribute("stroke-dasharray", "8 5");
@@ -730,7 +742,7 @@ export function createCanvas(svg, opts = {}) {
           if (p.id) port.setAttribute("data-port-id", p.id);
         }
         const x = svgEl("title");
-        let how = n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an export lists it). " : "Drag onto a node to connect. ";
+        let how = n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an HTTP (pull) node lists it, a stocked file). " : n.kind === "inbox" ? "Drag onto a node: a person releases to it, or an HTTP (pull) node lists what the inbox holds (a stocked file). " : "Drag onto a node to connect. ";
         if (p.id === "default") how = "Drag onto a node: where a job no case fits goes. ";
         else if (p.id === "to" && n.kind === "assert") how = "Drag onto a node: where a job that passes every check goes. ";
         else if (p.id === "error") how = "Drag onto a node (a notify node): where a job that fails a check goes, with what failed. ";

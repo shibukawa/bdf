@@ -209,7 +209,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 			return d, err
 		}
 		// what it wrote goes on: an export after it lists it
-		if err := m.continueFrom(ctx, d, n, p, false, &archiveRef{Node: n.Name, Key: key}); err != nil {
+		if err := m.continueFrom(ctx, d, n, p, false, &stockRef{Node: n.Name, Key: key}); err != nil {
 			m.o.Log.Warn("continue after an archive", "delivery", d.ID, "job", d.Job, "node", d.Node, "err", err)
 			return d, err
 		}

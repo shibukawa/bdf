@@ -25,7 +25,7 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 |---|---|
 | `GET /api/my/jobs?limit=` | the jobs the caller sees: theirs and their groups' (an administrator: every job) |
 | `GET /api/destinations` | the nodes the caller may send to |
-| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | send the body — a document, or data for a template node — to a node; `X-Meta-*` headers as well. 201 and the job |
+| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | send the body — a document, or data for a template node — to a node; `X-Meta-*` headers as well, or a `multipart/form-data` body as an endpoint takes it. 201 and the job |
 | `POST /api/locations/<display>/slips` | the same, to a display: the older name |
 | `GET /api/destinations/<node>/jobs?limit=` | the jobs sent to a node (admin) |
 | `GET /api/jobs/<n>` | a job: its payloads, metadata and legs |
@@ -85,15 +85,15 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `POST /api/deliveries/<id>/retry` | send one again now |
 | `POST /api/tick` | do what is due ([The tick](inboxes.md#tick)): the tick token, an app with the scope `tick`, the admin token, or a person with the role `topology` |
 
-## Exports {#exports}
+## HTTP (pull) {#exports}
 
-A backend's token, a frontend's token of the person, or the pages' session ([Exports](exports.md)):
+A backend's token, a frontend's token of the person, or the pages' session ([HTTP (pull)](exports.md)):
 
 | | |
 |---|---|
 | `GET /out/<name>?owner=&limit=` | the entries the reader may read, newest first |
 | `GET /out/<name>/<job>` | one entry |
-| `GET /out/<name>/<job>/record` | the archive's record of the job |
+| `GET /out/<name>/<job>/record` | the archive's record of the job (of an inbox's entry, the job) |
 | `GET /out/<name>/<job>/document` | the document, as the archive wrote it |
 
 ## Apps and audit {#apps}
