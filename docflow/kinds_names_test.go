@@ -6,6 +6,7 @@ package docflow
 const (
 	KindPrinter = "printer"
 	KindCups    = "cups"
+	KindCupsOut = "cups-out"
 	IPPPath     = "/ipp/print"
 	RouteBranch = "branch"
 )

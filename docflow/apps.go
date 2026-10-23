@@ -174,7 +174,7 @@ func (m *Manager) Apps(ctx context.Context) ([]App, error) {
 	return out, nil
 }
 
-// DeleteApp removes an app; one an endpoint lists stays.
+// DeleteApp removes an app; one a node lists (an entry, an export) stays.
 func (m *Manager) DeleteApp(ctx context.Context, id string) error {
 	rec, err := m.st.db.Get[appRecord](ctx, id)
 	if err != nil {
@@ -186,7 +186,7 @@ func (m *Manager) DeleteApp(ctx context.Context, id string) error {
 	}
 	for _, n := range nodes {
 		if slices.Contains(n.Apps, id) {
-			return fmt.Errorf("%w: endpoint %s takes the app %s", ErrConflict, n.Name, id)
+			return fmt.Errorf("%w: %s %s lists the app %s", ErrConflict, n.Kind, n.Name, id)
 		}
 	}
 	return mapErr(m.st.db.Delete[appRecord](ctx, id, rec.Revision()))
@@ -346,9 +346,9 @@ func (m *Manager) touchApp(ctx context.Context, a *App) {
 	}
 }
 
-// appMaySend tells whether an app may send to a destination: an endpoint
-// that lists it, with the scope print (a document) or print.template
-// (data). nil, another kind of viewer and an administrator may.
+// appMaySend tells whether an app may send to a destination: an entry (an
+// endpoint, a CUPS server) that lists it, with the scope print (a
+// document) or print.template (data). nil, another kind of viewer and an administrator may.
 func (m *Manager) appMaySend(ctx context.Context, v *Viewer, dest string, data bool) error {
 	if v == nil || v.Kind != PrincipalApp || v.Admin {
 		return nil
@@ -361,7 +361,7 @@ func (m *Manager) appMaySend(ctx context.Context, v *Viewer, dest string, data b
 	if err != nil {
 		return err
 	}
-	if n.Kind != KindEndpoint || !slices.Contains(n.Apps, v.ID) {
+	if !n.takesApp(v.ID) {
 		return fmt.Errorf("%w: %s does not take the app %s", ErrForbidden, dest, v.ID)
 	}
 	if !v.Has(need) {

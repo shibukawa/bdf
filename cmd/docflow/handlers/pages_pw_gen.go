@@ -177,7 +177,7 @@ var planTopologyOpsFill9Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 }}
 
 var planTopologyOpsFill10Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("an IPP port of its own for computers; forwards what it receives"),
+	planTopologyOps.Static("the IPP entry: computers print to it, on a port of its own"),
 }}
 
 var planTopologyOpsFill11Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
@@ -191,7 +191,7 @@ var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "cups", Name: "CUPS server", Children: planTopologyOpsFill10Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups", Name: "CUPS server (source)", Children: planTopologyOpsFill10Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
@@ -289,26 +289,30 @@ var planTopologyOpsFill25Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 }}
 
 var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("written once, never changed"),
+	planTopologyOps.Static("printed to a queue of a CUPS server, over IPP"),
 }}
 
 var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("keeps the latest documents, to look at"),
+	planTopologyOps.Static("written once, never changed"),
 }}
 
 var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("lists what an archive wrote, for applications and people to fetch"),
+	planTopologyOps.Static("keeps the latest documents, to look at"),
 }}
 
 var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("mails it as an attachment"),
+	planTopologyOps.Static("lists what an archive wrote, for applications and people to fetch"),
 }}
 
 var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("written to a bucket, once"),
+	planTopologyOps.Static("mails it as an attachment"),
 }}
 
 var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("written to a bucket, once"),
+}}
+
+var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static("sent to a web service"),
 }}
 
@@ -323,27 +327,31 @@ var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: "Archive", Children: planTopologyOpsFill26Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: "CUPS server (sink)", Children: planTopologyOpsFill26Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: "Sink", Children: planTopologyOpsFill27Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: "Archive", Children: planTopologyOpsFill27Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "Export", Children: planTopologyOpsFill28Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: "Sink", Children: planTopologyOpsFill28Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill29Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "Export", Children: planTopologyOpsFill29Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill30Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill30Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP", Children: planTopologyOpsFill31Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill31Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP", Children: planTopologyOpsFill32Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
@@ -406,47 +414,47 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planAppsOpsFill32Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
-	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
+var planAppsOpsFill33Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
+	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
 }}
 
-var planInboxesOpsFill33Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+var planInboxesOpsFill34Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill34Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+var planAdminJobsOpsFill35Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
 	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill35Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+var planDeliveriesOpsFill36Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
-type planHelpOpsScope37 struct {
+type planHelpOpsScope38 struct {
 	Outer HelpParams
 	Item  HelpLang
 	Index int
 }
 
-var planHelpOpsScope37Ops = htmlbind.Builder[planHelpOpsScope37]{}
+var planHelpOpsScope38Ops = htmlbind.Builder[planHelpOpsScope38]{}
 
-type planHelpOpsScope38 struct {
+type planHelpOpsScope39 struct {
 	Outer HelpParams
 	Item  HelpChapter
 	Index int
 }
 
-var planHelpOpsScope38Ops = htmlbind.Builder[planHelpOpsScope38]{}
+var planHelpOpsScope39Ops = htmlbind.Builder[planHelpOpsScope39]{}
 
-type planHelpOpsScope38OpsScope39 struct {
-	Outer planHelpOpsScope38
+type planHelpOpsScope39OpsScope40 struct {
+	Outer planHelpOpsScope39
 	Item  HelpSection
 	Index int
 }
 
-var planHelpOpsScope38OpsScope39Ops = htmlbind.Builder[planHelpOpsScope38OpsScope39]{}
+var planHelpOpsScope39OpsScope40Ops = htmlbind.Builder[planHelpOpsScope39OpsScope40]{}
 
-var planHelpOpsFill36Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
+var planHelpOpsFill37Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
 	planHelpOps.Static(" "),
 	planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
@@ -456,55 +464,55 @@ var planHelpOpsFill36Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpPa
 	planHelpOps.Static(" class=\"prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1\"> <div class=\"not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm\"> <a href=\"#help-nav\" class=\"link link-hover lg:hidden\">Contents</a> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpLang { return p.Langs },
-		func(p HelpParams, item HelpLang, index int) planHelpOpsScope37 {
-			return planHelpOpsScope37{Outer: p, Item: item, Index: index}
+		func(p HelpParams, item HelpLang, index int) planHelpOpsScope38 {
+			return planHelpOpsScope38{Outer: p, Item: item, Index: index}
 		},
-		[]htmlbind.Op[planHelpOpsScope37]{
-			planHelpOpsScope37Ops.Static(" <a"),
-			planHelpOpsScope37Ops.URLAttr("href", func(p planHelpOpsScope37) (string, bool) { return p.Item.Href.String(), true }),
-			planHelpOpsScope37Ops.Static(" class=\"link link-hover\">"),
-			planHelpOpsScope37Ops.Text(func(p planHelpOpsScope37) string { return p.Item.Label }),
-			planHelpOpsScope37Ops.Static("</a> "),
+		[]htmlbind.Op[planHelpOpsScope38]{
+			planHelpOpsScope38Ops.Static(" <a"),
+			planHelpOpsScope38Ops.URLAttr("href", func(p planHelpOpsScope38) (string, bool) { return p.Item.Href.String(), true }),
+			planHelpOpsScope38Ops.Static(" class=\"link link-hover\">"),
+			planHelpOpsScope38Ops.Text(func(p planHelpOpsScope38) string { return p.Item.Label }),
+			planHelpOpsScope38Ops.Static("</a> "),
 		}),
 	planHelpOps.Static(" </div> "),
 	planHelpOps.Raw(func(p HelpParams) string { return string(p.Body) }),
 	planHelpOps.Static(" </article> <nav aria-label=\"Manual\" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpChapter { return p.Chapters },
-		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope38 {
-			return planHelpOpsScope38{Outer: p, Item: item, Index: index}
+		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope39 {
+			return planHelpOpsScope39{Outer: p, Item: item, Index: index}
 		},
-		[]htmlbind.Op[planHelpOpsScope38]{
-			planHelpOpsScope38Ops.Static(" "),
-			planHelpOpsScope38Ops.If(func(p planHelpOpsScope38) bool { return p.Item.Current },
-				[]htmlbind.Op[planHelpOpsScope38]{
-					planHelpOpsScope38Ops.Static(" <li> <a"),
-					planHelpOpsScope38Ops.URLAttr("href", func(p planHelpOpsScope38) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope38Ops.Static(" class=\"menu-active\">"),
-					planHelpOpsScope38Ops.Text(func(p planHelpOpsScope38) string { return p.Item.Title }),
-					planHelpOpsScope38Ops.Static("</a> <ul> "),
-					planHelpOpsScope38Ops.For(
-						func(p planHelpOpsScope38) []HelpSection { return p.Item.Sections },
-						func(p planHelpOpsScope38, item HelpSection, index int) planHelpOpsScope38OpsScope39 {
-							return planHelpOpsScope38OpsScope39{Outer: p, Item: item, Index: index}
+		[]htmlbind.Op[planHelpOpsScope39]{
+			planHelpOpsScope39Ops.Static(" "),
+			planHelpOpsScope39Ops.If(func(p planHelpOpsScope39) bool { return p.Item.Current },
+				[]htmlbind.Op[planHelpOpsScope39]{
+					planHelpOpsScope39Ops.Static(" <li> <a"),
+					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope39Ops.Static(" class=\"menu-active\">"),
+					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
+					planHelpOpsScope39Ops.Static("</a> <ul> "),
+					planHelpOpsScope39Ops.For(
+						func(p planHelpOpsScope39) []HelpSection { return p.Item.Sections },
+						func(p planHelpOpsScope39, item HelpSection, index int) planHelpOpsScope39OpsScope40 {
+							return planHelpOpsScope39OpsScope40{Outer: p, Item: item, Index: index}
 						},
-						[]htmlbind.Op[planHelpOpsScope38OpsScope39]{
-							planHelpOpsScope38OpsScope39Ops.Static(" <li><a"),
-							planHelpOpsScope38OpsScope39Ops.URLAttr("href", func(p planHelpOpsScope38OpsScope39) (string, bool) { return p.Item.Href.String(), true }),
-							planHelpOpsScope38OpsScope39Ops.Static(">"),
-							planHelpOpsScope38OpsScope39Ops.Text(func(p planHelpOpsScope38OpsScope39) string { return p.Item.Title }),
-							planHelpOpsScope38OpsScope39Ops.Static("</a></li> "),
+						[]htmlbind.Op[planHelpOpsScope39OpsScope40]{
+							planHelpOpsScope39OpsScope40Ops.Static(" <li><a"),
+							planHelpOpsScope39OpsScope40Ops.URLAttr("href", func(p planHelpOpsScope39OpsScope40) (string, bool) { return p.Item.Href.String(), true }),
+							planHelpOpsScope39OpsScope40Ops.Static(">"),
+							planHelpOpsScope39OpsScope40Ops.Text(func(p planHelpOpsScope39OpsScope40) string { return p.Item.Title }),
+							planHelpOpsScope39OpsScope40Ops.Static("</a></li> "),
 						}),
-					planHelpOpsScope38Ops.Static(" </ul> </li> "),
+					planHelpOpsScope39Ops.Static(" </ul> </li> "),
 				},
-				[]htmlbind.Op[planHelpOpsScope38]{
-					planHelpOpsScope38Ops.Static(" <li><a"),
-					planHelpOpsScope38Ops.URLAttr("href", func(p planHelpOpsScope38) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope38Ops.Static(">"),
-					planHelpOpsScope38Ops.Text(func(p planHelpOpsScope38) string { return p.Item.Title }),
-					planHelpOpsScope38Ops.Static("</a></li> "),
+				[]htmlbind.Op[planHelpOpsScope39]{
+					planHelpOpsScope39Ops.Static(" <li><a"),
+					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope39Ops.Static(">"),
+					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
+					planHelpOpsScope39Ops.Static("</a></li> "),
 				}),
-			planHelpOpsScope38Ops.Static(" "),
+			planHelpOpsScope39Ops.Static(" "),
 		}),
 	planHelpOps.Static(" </ul> </nav> </main> "),
 }}
@@ -763,7 +771,7 @@ var planAppsPlan = &htmlbind.Plan[AppsParams]{
 	Ops: []htmlbind.Op[AppsParams]{
 		planAppsOps.Static(" "),
 		planAppsOps.Component(func(p AppsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Docflow", Account: p.Account, Children: planAppsOpsFill32Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Docflow", Account: p.Account, Children: planAppsOpsFill33Plan.Bind(p)})
 		}),
 		planAppsOps.Static(" "),
 	},
@@ -779,7 +787,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Docflow", Account: p.Account, Children: planInboxesOpsFill33Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Docflow", Account: p.Account, Children: planInboxesOpsFill34Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -795,7 +803,7 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
 		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Docflow", Account: p.Account, Children: planAdminJobsOpsFill34Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Docflow", Account: p.Account, Children: planAdminJobsOpsFill35Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -811,7 +819,7 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
 		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Docflow", Account: p.Account, Children: planDeliveriesOpsFill35Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Docflow", Account: p.Account, Children: planDeliveriesOpsFill36Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},
@@ -827,7 +835,7 @@ var planHelpPlan = &htmlbind.Plan[HelpParams]{
 	Ops: []htmlbind.Op[HelpParams]{
 		planHelpOps.Static(" "),
 		planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill36Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill37Plan.Bind(p)})
 		}),
 		planHelpOps.Static(" "),
 	},

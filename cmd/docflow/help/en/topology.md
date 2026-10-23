@@ -30,14 +30,14 @@ Without the role topology, the page only looks. Click a node, and the sidebar sh
 - **Print here**, when you may send to the node ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); otherwise "You may not print here";
 - **Jobs here**: your jobs that were sent to the node or reached it, with their state, who sent them, when and their route; Document downloads one, and Reprint here sends it again to this node, as a new job of yours.
 
-A sink also shows the latest documents it kept, and an export the entries listed there that you may read ([Exports](exports.md)).
+A sink also shows the latest documents it kept, an export the entries listed there that you may read ([Exports](exports.md)), and a CUPS server (source) how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).
 
 ## The editor {#editor}
 
 With the role topology, the same page is the editor: the canvas, and the sidebar for the node selected, with the administrator's tabs above.
 
-- **+ Add a node** opens the palette of kinds, under four headings: Source, Control (the roles control flow and filter), Convert (transform) and Sink. Choose one, and the new node appears on the canvas with the sidebar open on it: give it a name and its settings, and press Add; Escape drops it.
-- **Click a node** to open it in the sidebar: its settings, and what is at it ([The sidebar of a node](#sidebar)). Save writes the node; Delete, or the Delete key, removes it. A node another node sends to cannot be deleted: remove the edge first.
+- **+ Add a node** opens the palette of kinds, under four headings: Source, Control (the roles control flow and filter), Convert (transform) and Sink. Choose one, and the new node appears on the canvas with the sidebar open on it: give it a title, a name and its settings, and press Add; Escape drops it. A node needs no edge to be added: add the nodes in any order, and connect them once they are there. A job that reaches an entry, a queue or a step that sends to no node yet gets an error there, "sends to no node yet", on its route.
+- **Click a node** to open it in the sidebar: its settings under Settings, how it is reached and what is at it under Usage ([The sidebar of a node](#sidebar)). Save writes the node; Delete, or the Delete key, removes it. A node another node sends to cannot be deleted: remove the edge first.
 - **Drag a node** to move it. Where the nodes are drawn is saved for everyone (the layout), apart from the nodes themselves.
 - **Drag from a node's right port onto another node** to connect them. While you drag, the nodes that would not take what the edge carries fade, the wire turns red over one with the reason, and it snaps to the port of one that takes it; a drop on one that does not is refused before the server is asked. The edge is added to the node's `to` (a queue, an endpoint, a CUPS server, an inbox, a template or a convert node, an archive), to its `members` (a class), to its `otherwise` (a filter: a rule's nodes are set in the rule), or it sets the fallback printer (a display). Click an edge to remove it, after a confirmation.
 - Zoom, Fit and Refresh.
@@ -46,19 +46,26 @@ A node is checked when it is saved: the nodes it names exist; the name is not an
 
 ### Names, titles and descriptions {#names}
 
-A node's name is letters, digits, `.`, `_` and `-` (up to 64), and it does not change later: it is the node's IPP destination, `/ipp/print/<name>`, and what applications and other nodes refer to. The title is shown under the name. The description is a note of what the node is for — "the invoices of the ERP, PDF only; printed on the 3rd floor" — up to 1000 characters, as the description of an element of a C4 diagram: its first lines in the node on the canvas, all of it in the sidebar. A display, a printer, a sink and an export keep their kind; a node of any other kind may be changed into another of those kinds, keeping its name.
+A node has a title and a name. The title is what people read, in any characters: it is shown in the node's title bar on the canvas (the name, while it has none). The name is the system's: letters, digits, `.`, `_` and `-`, up to 64, starting with a letter or a digit, and no other node's; the edges of other nodes, the URLs (`/in/<name>`, a CUPS server's `/printers/<name>`, `/out/<name>`) and the records call the node by it. The Name field is checked as you type: a space, another character, or a name another node has turns it red, with what is wrong under it, and the node is not saved until it is right.
+
+Changing the name of a saved node renames it when it is saved, after a confirmation: the edges of the nodes that send to it, where it is drawn, and what is kept under its name move with it — a template node's templates, a display's devices and the slips it still shows, an inbox's items, a sink's documents, an export's entries — and an archive keeps writing to its collection. Where it is reached from outside changes with it: computers and applications set up with the old name must be set up again. The jobs that reached it keep the old name. A node with work on its way (deliveries waiting or failed, items held in an inbox, slips open on a display) is renamed once that is done; so is one the manager's `docflow.on_error` names, once the configuration names the new one.
+
+The description is a note of what the node is for — "the invoices of the ERP, PDF only; printed on the 3rd floor" — up to 1000 characters, as the description of an element of a C4 diagram: its first lines in the node on the canvas, all of it in the sidebar. A display, a printer, a sink and an export keep their kind; a node of any other kind may be changed into another of those kinds, keeping its name.
 
 ### The sidebar of a node {#sidebar}
 
-Besides the settings of its kind ([Node kinds](nodes.md)), the sidebar of a saved node shows:
+The sidebar of a saved node has two tabs. The one chosen stays as you click from node to node.
 
-- its IPP URL, and links to the jobs sent to it (Admin → Jobs), to the inbox it is (Admin → Inboxes) and to the deliveries waiting at it (Admin → Deliveries);
-- of an endpoint, its entry (the URL applications POST to) and its key: Rotate key makes a new one and shows it once ([Endpoints](entries.md#endpoints));
-- of a template node, its templates: upload one, the fields each looks up, its file, delete ([Templates and data](templates.md));
+**Settings**: the title, the name and the description, the settings of its kind ([Node kinds](nodes.md)), its scope and owner, Save and Delete; of a template node, its templates too: upload one, the fields each looks up, its file, delete ([Templates and data](templates.md)).
+
+**Usage**: how the node is reached from outside, and what is at it:
+
+- of a CUPS server (source), the URL computers add the printer with, how macOS, Windows and CUPS add it, and the commands ([CUPS server nodes](entries.md#cups));
+- of a printer or a CUPS server (sink), where this system prints the jobs, over IPP (a printer also over 9100 or LPD) ([CUPS server (sink)](nodes.md#cups-out));
+- of an endpoint, the request applications send and the apps allowed, and its key: Rotate key makes a new one and shows it once ([Endpoints](entries.md#endpoints)); of an S3 trigger, the request an S3 event's reference is posted with, and its key;
 - of a display, its devices, when each was last seen, and Add a device, which shows a one-time code and its QR code ([Display boards](displays.md));
-- of a CUPS server node, the URL computers add the printer with, and the command that lists it ([CUPS server nodes](entries.md#cups));
-- of a sink, the latest documents it kept, with their pages;
 - of an export, the URLs readers fetch from, and the entries listed there ([Exports](exports.md));
-- of a printer with a preview, what the fake printer received ([Printer](nodes.md#printer)).
+- links to the jobs sent to it (Admin → Jobs), to the inbox it is (Admin → Inboxes), to the deliveries waiting at it (Admin → Deliveries), and the OpenAPI document of an entry or an export;
+- of a sink, the latest documents it kept, with their pages; of a printer with a preview, what the fake printer received ([Printer](nodes.md#printer)).
 
-Help at the top of the sidebar opens the section of the node's kind in this manual.
+The other nodes are reached along the edges alone, and their Usage has the links. Help at the top of the sidebar opens the section of the node's kind in this manual.

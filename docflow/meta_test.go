@@ -17,11 +17,11 @@ import (
 // (job-account-id, job-accounting-user-id, x-…, document-metadata) are
 // kept as the job's metadata under ipp.…, told by Get-Job-Attributes and
 // go to the printer with the job, whether they came as IPP attributes
-// or as metadata of the API.
+// (at a CUPS server in front of it) or as metadata of the API.
 func TestIPPMeta(t *testing.T) {
 	e := newEnv(t, nil)
 	p := e.printer("laser")
-	c := e.ippClient("laser")
+	c := e.cups("cups1", "laser")
 	ctx := context.Background()
 	job := []ipp.Attribute{ipp.Attr("job-account-id", ipp.Name("dept-7")), ipp.Attr("x-cost-center", ipp.Keyword("cc-42")),
 		ipp.Attr("x-tags", ipp.Text("a"), ipp.Text("b")), ipp.Attr("copies", ipp.Integer(2))}

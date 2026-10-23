@@ -1,7 +1,7 @@
 # BDF Docflow
 
 A document workflow engine: a software-defined document network. Documents enter at virtual printers
-(every node is an IPP printer) and at API endpoints (a document, or a
+(CUPS server nodes, the IPP entries) and at API endpoints (a document, or a
 template and the data to fill it with), flow through the nodes an
 administrator composes — queues that fan out, classes that send to one
 member in turn, inboxes that hold a job until a person sends it on — and
@@ -179,9 +179,11 @@ The role `topology` gets the administrator's pages under `/admin` (the
 editor of the topology, apps, inboxes, jobs, deliveries) and the role
 `audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
 `kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
-`filter`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`,
+`filter`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`, `cups-out`,
 `archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
-and an IPP printer at `/ipp/print/<name>` unless it has `no_ipp: true`; a display's tablets are
+and `POST /api/nodes/<name>/rename` renames one, its edges following; IPP
+enters at `cups` nodes alone (their port's `/printers/<name>`, and
+`/ipp/print/<name>`); a display's tablets are
 enrolled with a one-time code from the display's sidebar
 ([help/en/displays.md](help/en/displays.md)); an export after an
 archive lets backends and people's frontends fetch the documents at
@@ -193,8 +195,9 @@ an application that prints invoices from data:
 The kinds are registered with the engine ([docflow](../../docflow)), and
 `GET /api/kinds` lists them with their roles and what they take. The
 core has the routing, transforming and keeping kinds. Inputs and outputs
-are adapters under [docflow/io](../../docflow/io): `printer`, `cups` and
-every node's IPP printer are [docflow/io/ipp](../../docflow/io/ipp);
+are adapters under [docflow/io](../../docflow/io): `printer`, `cups`
+(a CUPS server computers print to) and `cups-out` (a CUPS server's queue
+jobs are printed to) are [docflow/io/ipp](../../docflow/io/ipp);
 `smtp` is [docflow/io/smtp](../../docflow/io/smtp), `s3` and `s3-trigger`
 [docflow/io/s3](../../docflow/io/s3), `http`
 [docflow/io/http](../../docflow/io/http), `notify`

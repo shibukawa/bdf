@@ -19,8 +19,8 @@ import (
 // the core's (queues, classes, filters, inboxes, archives, template and
 // convert nodes, displays, sinks, exports and endpoints) by this package,
 // and the inputs and outputs by the packages of docflow/io, in their init
-// (docflow/io/ipp: printers, CUPS servers, and every node's IPP printer at
-// /ipp/print). A program imports the ones it serves. The engine knows a
+// (docflow/io/ipp: printers, and CUPS servers, the one entry of IPP, also
+// at /ipp/print). A program imports the ones it serves. The engine knows a
 // kind by its entry here alone: what it takes and sends on, how its
 // settings are checked, and what a job that reaches it does. The settings
 // of every kind are the fields of Node.
@@ -91,6 +91,11 @@ type Kind struct {
 	// FetchSchema is the JSON Schema of the reference Fetch reads, for the
 	// OpenAPI document (openapi.go); none, any JSON object.
 	FetchSchema map[string]any
+	// Discover asks the far side of a node's settings what is there, for
+	// the editor to pick from before the node is saved (the queues of a
+	// CUPS server): POST /api/kinds/<kind>/discover with the settings. A
+	// far side that does not answer is ErrPrint.
+	Discover func(ctx context.Context, m *Manager, in Node) (any, error)
 
 	// route takes a job that reaches a node of a core kind; a kind with
 	// none sends to an exit (Send), or forwards along To.
@@ -177,6 +182,12 @@ func kindNames() []string {
 func isEntry(kind string) bool {
 	k := kindNamed(kind)
 	return k != nil && k.Role == RoleEntry
+}
+
+// takesApp tells an entry that lists an app among those that may send to
+// it with their own credentials (Apps).
+func (n *Node) takesApp(id string) bool {
+	return isEntry(n.Kind) && slices.Contains(n.Apps, id)
 }
 
 // ServesPort tells a kind whose node listens on a port of its own
@@ -500,6 +511,9 @@ type KindInfo struct {
 	// notify); Keyed an entry with a key of its own at /in/<name>.
 	Step  bool `json:"step,omitempty"`
 	Keyed bool `json:"keyed,omitempty"`
+	// Discovers tells a kind whose far side is asked what is there
+	// (Kind.Discover).
+	Discovers bool `json:"discovers,omitempty"`
 }
 
 // KindInfos are the kinds registered, as the API tells them.
@@ -508,7 +522,7 @@ func KindInfos() []KindInfo {
 	out := make([]KindInfo, 0, len(ks))
 	for _, k := range ks {
 		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Makes: k.Makes, Fixed: k.Fixed,
-			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name)})
+			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name), Discovers: k.Discover != nil})
 	}
 	return out
 }

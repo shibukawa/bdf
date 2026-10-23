@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -279,18 +280,34 @@ func (e *env) display(name string, n Node) {
 	e.admin("PUT", "/api/nodes/"+name, n, http.StatusOK)
 }
 
-// ippClient prints to a location's printer.
-func (e *env) ippClient(loc string) *ipp.Client {
-	return &ipp.Client{URL: e.srv.URL + IPPPath + "/" + loc, User: "wms"}
+// ippClient prints to a CUPS server node's printer on the manager's own
+// server (/ipp/print/<name>): IPP enters the topology there alone.
+func (e *env) ippClient(name string) *ipp.Client {
+	return &ipp.Client{URL: e.srv.URL + IPPPath + "/" + name, User: "wms"}
 }
 
-func (e *env) printJob(loc, name string, pages int) *ipp.JobStatus {
+// cups puts a CUPS server node that forwards to the nodes of to, and is
+// the IPP printer computers print to in front of them.
+func (e *env) cups(name string, to ...string) *ipp.Client {
 	e.t.Helper()
-	js, err := e.ippClient(loc).PrintJob(context.Background(), name, "application/x-bdf", nil, bytes.NewReader(testDoc(e.t, pages)))
-	if err != nil {
+	e.node(name, Node{Kind: KindCups, To: to}, http.StatusOK)
+	return e.ippClient(name)
+}
+
+// printJob sends a .bdf of pages to a destination as an application
+// does, over the API: as the user wms, anonymous (no submit token is
+// set).
+func (e *env) printJob(dest, name string, pages int) *Job {
+	e.t.Helper()
+	res, out := e.do(nil, "POST", "/api/destinations/"+dest+"/jobs?name="+url.QueryEscape(name)+"&user=wms", "", testDoc(e.t, pages))
+	if res.StatusCode != http.StatusCreated {
+		e.t.Fatalf("print %q to %s: %d %s", name, dest, res.StatusCode, out)
+	}
+	var j Job
+	if err := json.Unmarshal(out, &j); err != nil {
 		e.t.Fatal(err)
 	}
-	return js
+	return &j
 }
 
 func TestDisplay(t *testing.T) {
@@ -306,17 +323,17 @@ func TestDisplay(t *testing.T) {
 		t.Fatal("the board changed by itself")
 	}
 
-	// the WMS prints, as to any IPP printer
-	js := e.printJob("wh-a", "picking list 1", 2)
-	if js.ID != 1 || js.State != ipp.JobCompleted {
-		t.Fatalf("job %+v", js)
+	// the WMS sends it, as an application does
+	j := e.printJob("wh-a", "picking list 1", 2)
+	if j.Number != 1 || j.State != JobCompleted {
+		t.Fatalf("job %+v", j)
 	}
 	b = d.board()
 	if b == nil || len(b.Open) != 1 {
 		t.Fatalf("board %+v", b)
 	}
 	s := b.Open[0]
-	if s.Name != "picking list 1" || s.Pages != 2 || s.State != SlipNew || s.Source != "ipp" ||
+	if s.Name != "picking list 1" || s.Pages != 2 || s.State != SlipNew || s.Source != "api" ||
 		s.ClaimedUser != "wms" || s.SubmittedBy == nil || s.SubmittedBy.Kind != PrincipalAnonymous {
 		t.Fatalf("slip %+v", s)
 	}
@@ -346,26 +363,42 @@ func TestDisplay(t *testing.T) {
 	}
 	d.action(s.ID, "done", http.StatusConflict)
 
-	// the sender sees the job; one it cancels leaves the board
-	c := e.ippClient("wh-a")
-	got, err := c.GetJobAttributes(context.Background(), 1)
-	if err != nil || got.State != ipp.JobCompleted {
-		t.Fatalf("job 1: %+v %v", got, err)
+	// a computer prints through a CUPS server, as to any IPP printer: it
+	// sees its job there; one it cancels leaves the board
+	ctx := context.Background()
+	c := e.cups("cups1", "wh-a")
+	js, err := c.PrintJob(ctx, "picking list 2", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1)))
+	if err != nil || js.ID != 2 || js.State != ipp.JobCompleted {
+		t.Fatalf("job 2: %+v %v", js, err)
 	}
-	e.printJob("wh-a", "picking list 2", 1)
-	if err := c.CancelJob(context.Background(), 2); err != nil {
+	got, err := c.GetJobAttributes(ctx, 2)
+	if err != nil || got.State != ipp.JobCompleted || got.Name != "picking list 2" {
+		t.Fatalf("job 2: %+v %v", got, err)
+	}
+	if _, err := c.GetJobAttributes(ctx, 1); !ipp.IsStatus(err, ipp.StatusClientErrorNotFound) {
+		t.Fatalf("job 1 is not the CUPS server's: %v", err)
+	}
+	if err := c.CancelJob(ctx, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CancelJob(context.Background(), 1); !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) {
-		t.Fatalf("cancel a done job: %v", err)
+	if err := c.CancelJob(ctx, 2); !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) {
+		t.Fatalf("cancel twice: %v", err)
+	}
+	if res, out := e.do(nil, "POST", "/api/jobs/1/cancel", adminToken, nil); res.StatusCode != http.StatusConflict {
+		t.Fatalf("cancel a done job: %d %s", res.StatusCode, out)
 	}
 	b = d.board()
 	if b == nil || len(b.Open) != 0 || len(b.Ended) != 2 || b.Ended[0].State != SlipCanceled {
 		t.Fatalf("board after cancel %+v", b)
 	}
-	jobs, err := c.GetJobs(context.Background(), "completed", false, 10)
-	if err != nil || len(jobs) != 2 {
+	jobs, err := c.GetJobs(ctx, "completed", false, 10)
+	if err != nil || len(jobs) != 1 || jobs[0].ID != 2 || jobs[0].State != ipp.JobCanceled {
 		t.Fatalf("jobs %+v %v", jobs, err)
+	}
+	var sent []Job
+	json.Unmarshal(e.admin("GET", "/api/destinations/wh-a/jobs", nil, http.StatusOK), &sent)
+	if len(sent) != 1 || sent[0].Number != 1 {
+		t.Fatalf("jobs of wh-a %+v", sent)
 	}
 
 	// ended slips leave after the location keeps them
@@ -406,10 +439,14 @@ func TestSubmitAPI(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/api/locations/nowhere/slips", "wms:s3cret", doc); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("no location: %d", res.StatusCode)
 	}
-	// IPP asks for the token too
-	c := e.ippClient("wh-a")
+	// IPP, at a CUPS server, asks for the token too
+	c := e.cups("cups1", "wh-a")
 	if _, err := c.PrintJob(context.Background(), "x", "", nil, bytes.NewReader(doc)); err == nil {
 		t.Fatal("IPP without a token")
+	}
+	c.Username, c.Password = "wms", "s3cret"
+	if js, err := c.PrintJob(context.Background(), "x", "", nil, bytes.NewReader(doc)); err != nil || js.State != ipp.JobCompleted {
+		t.Fatalf("IPP with the token: %+v %v", js, err)
 	}
 	got, out := e.do(nil, "GET", "/api/slips/"+s.ID+"/document", adminToken, nil)
 	if got.StatusCode != http.StatusOK || !bytes.HasPrefix(out, bdf.Magic[:]) {

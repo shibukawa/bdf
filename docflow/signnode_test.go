@@ -21,7 +21,7 @@ func TestSignNode(t *testing.T) {
 	id := ca.Issue("BDF Docflow", false)
 	e := newEnv(t, func(o *Options) { o.Signer = &Signer{Key: id.Key, Chain: id.Chain, TSA: tsa.URL} })
 	e.node("keep", Node{Kind: KindSink}, http.StatusOK)
-	e.node("witness", Node{Kind: KindSign}, http.StatusBadRequest)
+	e.node("witness", Node{Kind: KindSign}, http.StatusOK)
 	e.node("witness", Node{Kind: KindSign, To: []string{"keep"}, SignRole: strings.Repeat("x", 65)}, http.StatusBadRequest)
 	e.node("witness", Node{Kind: KindSign, To: []string{"keep"}}, http.StatusOK)
 	// it signs .bdf: data does not reach it
