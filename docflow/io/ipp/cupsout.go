@@ -15,15 +15,20 @@ import (
 // to it. The CUPS server's filters and drivers make what its printer
 // takes, of the PDF (or PWG Raster) the manager sends, as print.Print
 // chooses by what the queue says it supports. Its URL is the queue's
-// (ipp://host:631/printers/<queue>); its credential, the user and
-// password the server asks for.
+// (ipp://host:631/printers/<queue>), given or picked from the queues
+// Bonjour finds (bonjour.go); its credential, the user and password the
+// server asks for.
 
-// checkCupsOut takes the queue's URL and the credential of its server
-// (user:password; none: no authentication).
+// checkCupsOut takes the queue's URL, the instance name it was picked by
+// from Bonjour, and the credential of its server (user:password; none:
+// no authentication).
 func checkCupsOut(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {
 	n.URL, n.Credential = strings.TrimSpace(in.URL), strings.TrimSpace(in.Credential)
 	if _, err := queueOf(n.URL); err != nil {
 		return fmt.Errorf("%w: %v", docflow.ErrInvalid, err)
+	}
+	if err := checkBonjour(in, n); err != nil {
+		return err
 	}
 	return docflow.CheckCredential(n.Credential)
 }
@@ -63,11 +68,7 @@ func cupsClient(m *docflow.Manager, rawURL, credential string) (*ipp.Client, err
 // sendCupsOut prints a document to the node's queue, as send prints to a
 // printer.
 func sendCupsOut(ctx context.Context, o *docflow.Out) (string, error) {
-	c, err := cupsClient(o.Manager(), o.Node.URL, o.Node.Credential)
-	if err != nil {
-		return "", err
-	}
-	return printTo(ctx, o, c)
+	return printFound(ctx, o, func(url string) (*ipp.Client, error) { return cupsClient(o.Manager(), url, o.Node.Credential) })
 }
 
 // Queue is a queue of a CUPS server, as discoverQueues lists it.
@@ -87,8 +88,12 @@ type Queue struct {
 
 // discoverQueues lists the queues of the CUPS server of a node's URL (its
 // scheme, host and port: the path may be left out), asked with the
-// node's credential.
+// node's credential; with no URL, the queues Bonjour finds on the local
+// links ([]Found).
 func discoverQueues(ctx context.Context, m *docflow.Manager, in docflow.Node) (any, error) {
+	if strings.TrimSpace(in.URL) == "" {
+		return bonjour(ctx, m, true)
+	}
 	u, err := url.Parse(strings.TrimSpace(in.URL))
 	if err != nil || (u.Scheme != "ipp" && u.Scheme != "ipps") || u.Host == "" {
 		return nil, fmt.Errorf("%w: url %q: a CUPS server, ipp://host:631 (or ipps://)", docflow.ErrInvalid, in.URL)

@@ -49,7 +49,7 @@ curl -H "Authorization: Bearer bdfk_…" \
 
 CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷するコンピュータや業務システム向けです。プロセス自身のポートで動く CUPS サーバーで、プリンタはノード自身の 1 台です。コンピュータは、ほかの CUPS プリンタと同じように `ipp://<host>:<port>/printers/<name>`（ノードに証明書があれば `ipps://`）でプリンタを追加し、そこに印刷したものはノードの `to` へ進みます。プリンタならノードは中継になり、シンクなら印刷されたものが見え、フィルタなら条件に合うものだけが残ります。`lpstat -h <host>:<port> -p` で一覧できます。新しい CUPS サーバーには、6310 から、どのノードも使っていない最初のポートが付きます。逆に、このシステムから CUPS サーバーのキューへ印刷するには、エッジの先に [CUPS サーバー（シンク）](nodes.md#cups-out)を置きます。ノードの使い方タブに、URL、macOS・Windows・CUPS での追加のしかた、コマンドが表示されます。
 
-プリンタは AirPrint や IPP Everywhere のプリンタと同じように答えます（PDF 優先、Apple と PWG のラスター、A3 からはがきまでの用紙）。そのため Mac は AirPrint のキューを作り、PDF を送ります。アドレスで追加するときは、ドライバに AirPrint を選びます。一般的な PostScript プリンタは PostScript を送りますが、これは受け付けず、Mac はジョブを再送し続けます（拒否のたびに `ipp: print-job refused` がログに出ます）。Bonjour（`dnssd`）を入れると、ポートが開いている間、ローカルネットワークの Mac、iPhone、iPad が「<タイトル> @ <コンピュータ>」として見つけます。ホスト名はプロセス自身のもの（`<コンピュータ>-docflow.local`）です。
+プリンタは AirPrint や IPP Everywhere のプリンタと同じように答えます（PDF 優先、Apple と PWG のラスター、A3 からはがきまでの用紙）。そのため Mac は AirPrint のキューを作り、PDF を送ります。アドレスで追加するときは、ドライバに AirPrint を選びます。一般的な PostScript プリンタは PostScript を送りますが、これは受け付けず、Mac はジョブを再送し続けます（拒否のたびに `ipp: print-job refused` がログに出ます）。Bonjour（`dnssd`。`false` にしない限り入っています）で告知するので、ポートが開いている間、ローカルネットワークの Mac、iPhone、iPad が「<タイトル> @ <コンピュータ>」として見つけます。ホスト名はプロセス自身のもの（`<コンピュータ>-docflow.local`）です。
 
 ## アプリ {#apps}
 
