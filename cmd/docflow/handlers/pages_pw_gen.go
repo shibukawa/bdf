@@ -384,11 +384,15 @@ var planTabletOpsFill7Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[Tab
 	planTabletOps.AttrCtx("placeholder", func(ctx context.Context, p TabletParams) (string, bool) {
 		return htmlbind.Escape(messages.PagesTabletDevicePlaceholder(pwruntime.MessageLocale(ctx))), true
 	}),
-	planTabletOps.Static("> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">"),
+	planTabletOps.Static("> </fieldset> <button id=\"enroll-submit\" type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">"),
 	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
 		return messages.PagesTabletEnroll(pwruntime.MessageLocale(ctx))
 	}),
-	planTabletOps.Static("</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">"),
+	planTabletOps.Static("</button> </form> <div id=\"enroll-insecure\" role=\"alert\" class=\"alert alert-warning\" hidden>"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletInsecure(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</div> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">"),
 	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
 		return messages.PagesTabletOpen(pwruntime.MessageLocale(ctx))
 	}),
@@ -761,7 +765,11 @@ var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 				return messages.PagesEnrollModalNote(pwruntime.MessageLocale(ctx))
 			}),
-			planTopologyOps.Static("</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">"),
+			planTopologyOps.Static("</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div id=\"enroll-insecure\" role=\"alert\" class=\"alert alert-warning mt-3 text-left text-sm\" hidden>"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesEnrollInsecure(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</div> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">"),
 			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 				return messages.PagesClose(pwruntime.MessageLocale(ctx))
 			}),

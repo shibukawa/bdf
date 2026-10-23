@@ -67,6 +67,14 @@ func main() {
 	defer app.Close()
 	stop := app.StartTimer(ctx)
 	defer stop()
+	// docflow.https_port serves the whole chain, for the devices on the
+	// network
+	pw.RegisterMiddleware(pw.SlotMetrics-4, "https-port", app.Outermost)
+	stopHTTPS, err := app.StartHTTPS()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stopHTTPS()
 	pw.RegisterMiddleware(pw.SlotAccessLog-5, "quiet-polls", handlers.QuietPolls)
 	if err := pw.Run(ctx, app.Handler(), pw.WithPublicFS(publicTree())); err != nil {
 		log.Fatal(err)

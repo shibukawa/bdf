@@ -7,6 +7,10 @@
 [docflow]
 # plain http on localhost: the devices' cookie without Secure
 secure_cookies = false
+# devices on the network (a tablet) make their keys over HTTPS: a
+# certificate of this computer signed by itself, kept in the user's
+# cache, which a device's browser warns about once
+https_port = 8443
 
 [oidc]
 groups_claim = "groups"

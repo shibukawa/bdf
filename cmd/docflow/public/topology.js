@@ -1957,6 +1957,9 @@ async function devicesSection(n, box) {
       $("enroll-code").textContent = e.code.replace(/(.{5})/, "$1-");
       $("enroll-url").textContent = e.url;
       $("enroll-url").href = e.url;
+      // a device makes its key with WebCrypto: HTTPS, or localhost
+      const u = new URL(e.url);
+      $("enroll-insecure").hidden = u.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
       $("enroll-expires").textContent = _("Valid once, until {when}", { when: since(e.expires) });
       $("enroll-modal").showModal();
     } catch (err) {

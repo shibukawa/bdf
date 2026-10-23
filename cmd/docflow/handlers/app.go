@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/shibukawa/bdf/sign"
@@ -38,6 +39,12 @@ type App struct {
 	m      *docflow.Manager
 	ports  *ports
 	log    *slog.Logger
+	// chain is the framework's chain around Handler (Outermost), which
+	// the HTTPS listener on httpsPort serves; lanAddr is this computer's
+	// address on the network (lanAddress)
+	chain     atomic.Pointer[http.Handler]
+	httpsPort int
+	lanAddr   func() string
 }
 
 // Open opens the store and makes the manager. oidc is who of the people
@@ -53,6 +60,9 @@ func Open(ctx context.Context, cfg DocflowConfig, oidc OIDCConfig) (*App, error)
 		secret = make([]byte, 32)
 		rand.Read(secret)
 		log.Warn("docflow: no docflow.secret; a random one is used, and the devices sign in again after a restart")
+	}
+	if err := checkHTTPS(cfg); err != nil {
+		return nil, err
 	}
 	tokens := map[string]string{}
 	for _, t := range cfg.SubmitTokens {
@@ -88,13 +98,13 @@ func Open(ctx context.Context, cfg DocflowConfig, oidc OIDCConfig) (*App, error)
 		st.Close()
 		return nil, err
 	}
-	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log}
+	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log, lanAddr: lanAddress}
 	a.ports = newPorts(a)
 	conv := printconv.Converter{FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts}
 	a.m, err = docflow.New(st, docflow.Options{
 		Converter: conv, Secret: secret, PreviousSecrets: previous, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
 		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
-		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
+		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", DeviceOrigin: a.deviceOrigin, Log: log,
 		JobKeep: cfg.JobKeep, OnError: cfg.OnError, CredentialDir: cfg.CredentialDir,
 		// a process sends deliveries as jobs come, and listens on the
 		// ports of the entry nodes; a function leaves the deliveries to

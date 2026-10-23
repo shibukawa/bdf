@@ -275,8 +275,9 @@ export component Tablet(languages: Language[], here: string): html {
                 <legend class="fieldset-legend text-base">{t tablet-device-name}</legend>
                 <input id="device-name" class="input input-lg w-full" autocomplete="off" placeholder={t tablet-device-placeholder}>
               </fieldset>
-              <button type="submit" class="btn btn-primary btn-lg btn-block">{t tablet-enroll}</button>
+              <button id="enroll-submit" type="submit" class="btn btn-primary btn-lg btn-block">{t tablet-enroll}</button>
             </form>
+            <div id="enroll-insecure" role="alert" class="alert alert-warning" hidden>{t tablet-insecure}</div>
             <div id="enroll-error" role="alert" class="alert alert-error" hidden></div>
           </div>
         </div>
@@ -423,6 +424,7 @@ export component Topology(account: Account): html {
             <p id="enroll-code" class="font-mono text-4xl font-bold tracking-widest"></p>
             <p class="mt-3 break-all"><a id="enroll-url" class="link link-primary"></a></p>
             <p id="enroll-expires" class="mt-2 text-sm text-base-content/60"></p>
+            <div id="enroll-insecure" role="alert" class="alert alert-warning mt-3 text-left text-sm" hidden>{t enroll-insecure}</div>
             <div class="modal-action justify-center">
               <form method="dialog"><button class="btn">{t close}</button></form>
             </div>
