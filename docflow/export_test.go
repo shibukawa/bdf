@@ -679,15 +679,16 @@ func TestExportInbox(t *testing.T) {
 			t.Fatalf("%s after the release: %d", path, res.StatusCode)
 		}
 	}
-	// a discard takes it off as well
+	// a discard takes it off as well, under the export's new name
+	e.admin("POST", "/api/nodes/pull/rename", map[string]string{"name": "fetch"}, http.StatusOK)
 	e.admin("POST", "/api/items/"+v.Held[1].ID+"/discard", nil, http.StatusOK)
-	if es := listed(); len(es) != 0 {
-		t.Fatalf("after the discard %+v", es)
+	if res, out := e.as("alice", "GET", "/out/fetch", nil); res.StatusCode != http.StatusOK || string(bytes.TrimSpace(out)) != "[]" {
+		t.Fatalf("after the discard: %d %s", res.StatusCode, out)
 	}
 	var typed []TopoNode
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &typed)
 	for _, n := range typed {
-		if n.Name == "hold" && (len(n.Accepts) != 3 || len(n.Broken) > 0) || n.Name == "pull" && (n.Takes != PayloadStocked || n.Listed != 0) {
+		if n.Name == "hold" && (len(n.Accepts) != 3 || len(n.Broken) > 0) || n.Name == "fetch" && (n.Takes != PayloadStocked || n.Listed != 0) {
 			t.Fatalf("typing of %s: %+v", n.Name, n)
 		}
 	}

@@ -66,6 +66,32 @@ func (m *Manager) pullsOf(ctx context.Context, n *Node) (pulls, release []string
 	return pulls, release
 }
 
+// moveListedAt renames an HTTP (pull) node in the items held that it
+// lists, so that their release takes them off it under its new name.
+func (m *Manager) moveListedAt(ctx context.Context, from, to string) error {
+	items, err := list[itemRecord](ctx, m.st.db)
+	if err != nil {
+		return err
+	}
+	for _, rec := range items {
+		if rec.Data.State != ItemHeld || !slices.Contains(rec.Data.Listed, from) {
+			continue
+		}
+		if _, err := change(ctx, m.st.db, rec.ID(), false, func(r *itemRecord) error {
+			r.Listed = slices.DeleteFunc(r.Listed, func(x string) bool { return x == to })
+			for i, x := range r.Listed {
+				if x == from {
+					r.Listed[i] = to
+				}
+			}
+			return nil
+		}); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+	}
+	return nil
+}
+
 // unlistItem takes an item that is no longer held off the HTTP (pull)
 // nodes that list it. One that fails is logged: the export reads the
 // item before it shows the entry.
