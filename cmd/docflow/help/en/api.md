@@ -95,6 +95,7 @@ A backend's token, a frontend's token of the person, or the pages' session ([HTT
 | `GET /out/<name>/<job>` | one entry |
 | `GET /out/<name>/<job>/record` | the archive's record of the job (of an inbox's entry, the job) |
 | `GET /out/<name>/<job>/document` | the document, as the archive wrote it |
+| `GET /out/<name>/<job>/pages/<n>.png?w=` | a page of a `.bdf` document, as PNG |
 
 ## Apps and audit {#apps}
 

@@ -182,7 +182,7 @@ Writes what reaches it — a `.bdf` document, or any file or data as received �
 
 ## Sink {#sink}
 
-Keeps the latest documents that reach it, to look at on the topology: the first page shows on the node, every page in the sidebar. An older one goes when a newer comes. A sink is where a document is seen without a printer or a device: behind an endpoint or a CUPS server while they are set up.
+Keeps the latest documents that reach it, to look at on the topology: the first page shows on the node, the first page of each in the sidebar; a click on one shows every page large, with its download. An older one goes when a newer comes. A sink is where a document is seen without a printer or a device: behind an endpoint or a CUPS server while they are set up.
 
 | Setting | |
 |---|---|
@@ -190,7 +190,7 @@ Keeps the latest documents that reach it, to look at on the topology: the first 
 
 ## HTTP (pull) {#export}
 
-The kind `export`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
+The kind `export`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. Its sidebar lists the latest entries the viewer may read, a `.bdf` document's with its first page: a click shows every page large, with its download. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
 
 | Setting | |
 |---|---|

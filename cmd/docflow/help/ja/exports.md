@@ -39,6 +39,7 @@ HTTP (pull) ノード（種類 `export`。以下、エクスポート）は、�
 | `GET /out/<name>/<job>` | 1 つのエントリ。送り手とアーカイブが書いた場所も |
 | `GET /out/<name>/<job>/record` | アーカイブのジョブの記録。書いた時点のメタデータ、ペイロード、レグ。インボックスのエントリなら、現在のジョブ |
 | `GET /out/<name>/<job>/document` | アーカイブが書いたとおりの文書。ダウンロードのたびに監査ログに残ります |
+| `GET /out/<name>/<job>/pages/<n>.png?w=` | `.bdf` 文書のページを、幅 `w` ピクセル（800）の PNG に描いたもの。ダウンロードの前に見るためのもので、監査ログには残りません |
 
 これらは、エントリの fields も含めてエクスポートの OpenAPI 文書に載ります。サイドバーのリンク OpenAPI か、`GET /api/openapi.json?node=<name>` です（[OpenAPI](api.md#openapi)）。
 
