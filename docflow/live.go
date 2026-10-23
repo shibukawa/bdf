@@ -41,7 +41,7 @@ type LiveNode struct {
 	// recentWindow.
 	Recent int `json:"recent,omitempty"`
 	// Kept counts the jobs a sink keeps, and Latest is the newest of
-	// them (its id); Listed counts the jobs an export lists.
+	// them (its id); Listed counts the jobs a downloader lists.
 	Kept   int    `json:"kept,omitempty"`
 	Latest string `json:"latest,omitempty"`
 	Listed int    `json:"listed,omitempty"`
@@ -75,7 +75,7 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 	// the recent counts age: the revision changes every minute
 	fmt.Fprintf(h, "%d\n", now.Unix()/60)
 	kept := map[string]map[string]bool{}   // by sink, the jobs it keeps
-	listed := map[string]map[string]bool{} // by export, the jobs it lists now
+	listed := map[string]map[string]bool{} // by downloader, the jobs it lists now
 	for i := range jobs {
 		j := &jobs[i]
 		if !v.CanSee(j) {
@@ -100,11 +100,11 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 			case LegRefused:
 				n.Refused++
 			case LegListed:
-				// the leg stays listed: the export's list tells whether it
-				// lists the job still (an export deleted and put again does not)
+				// the leg stays listed: the downloader's list tells whether it
+				// lists the job still (a downloader deleted and put again does not)
 				if listed[l.Node] == nil {
 					listed[l.Node] = map[string]bool{}
-					for _, id := range m.exportJobs(ctx, exportListID(l.Node, "")) {
+					for _, id := range m.downloadJobs(ctx, downloadListID(l.Node, "")) {
 						listed[l.Node][id] = true
 					}
 				}
@@ -166,7 +166,7 @@ func publicTopology(ns []TopoNode) []TopoNode {
 		}
 		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, Description: n.Description, To: n.To, Original: n.Original, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback,
 			Cases: cases, Default: n.Default}
-		n.In, n.Templates, n.Held, n.Open, n.Devices, n.Pending, n.Kept, n.Latest, n.Listed = "", nil, 0, 0, 0, 0, 0, "", 0
+		n.API, n.Templates, n.Held, n.Open, n.Devices, n.Pending, n.Kept, n.Latest, n.Listed = "", nil, 0, 0, 0, 0, 0, "", 0
 	}
 	return ns
 }

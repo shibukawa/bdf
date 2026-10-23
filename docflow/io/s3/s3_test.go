@@ -79,7 +79,7 @@ func TestS3Out(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "bucket", Kind: s3.KindS3, URL: f.url("out"), Credential: "s3-test", Path: "orders/{{meta.customer}}/{{meta.$name}}"},
 		docflow.Node{Name: "plain", Kind: s3.KindS3, URL: f.url("out"), Credential: "s3-test"},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, Output: docflow.OutputFile, To: []string{"bucket", "plain"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, Output: docflow.OutputFile, To: []string{"bucket", "plain"}})
 	doc := flowtest.Doc(t, 1)
 	j := e.Submit("in", "a.bdf", doc, map[string]any{"customer": "../../acme"})
 	e.Tick()
@@ -137,7 +137,7 @@ func TestS3Trigger(t *testing.T) {
 		t.Fatal("no key")
 	}
 	post := func(body, key string) int {
-		req, _ := http.NewRequest(http.MethodPost, e.Srv.URL+docflow.InPath+"/trigger", strings.NewReader(body))
+		req, _ := http.NewRequest(http.MethodPost, e.Srv.URL+docflow.NodePath(s3.KindTrigger, "trigger"), strings.NewReader(body))
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
@@ -180,7 +180,7 @@ func TestS3Trigger(t *testing.T) {
 	if s := post(`{"bucket": "in", "key": "scans/2026/a b.bdf"}`, "bdfk_wrong"); s != http.StatusUnauthorized {
 		t.Errorf("wrong key: %d", s)
 	}
-	// the key rotates as an endpoint's
+	// the key rotates as an uploader's
 	res, _ := adminPost(e, "/api/nodes/trigger/key")
 	if res != http.StatusOK {
 		t.Errorf("rotate: %d", res)

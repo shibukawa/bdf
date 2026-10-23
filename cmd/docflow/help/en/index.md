@@ -1,6 +1,6 @@
 # BDF Docflow
 
-Docflow is a software-defined document network. A document enters at an entry — an application's endpoint, a CUPS server a computer prints to, an S3 trigger a bucket's events reach, or the form on the Jobs page — and flows through the nodes an administrator composed: queues that fan out, classes that send to one member in turn, filters that route by what a job is, inboxes that hold a job until a person sends it on, template nodes that fill a form with data, convert nodes that make a document of a file. It ends on display boards (the tablets enrolled at a location), on printers, in archives that keep a copy nobody changes, in sinks that keep the latest documents to look at, in exports (HTTP (pull) nodes) that applications and people fetch them from, and in web services it is sent to (HTTP (push)). Paper is one destination among others.
+Docflow is a software-defined document network. A document enters at an entry — an application's uploader, a CUPS server a computer prints to, an S3 trigger a bucket's events reach, or the form on the Jobs page — and flows through the nodes an administrator composed: queues that fan out, classes that send to one member in turn, filters that route by what a job is, inboxes that hold a job until a person sends it on, template nodes that fill a form with data, convert nodes that make a document of a file. It ends on display boards (the tablets enrolled at a location), on printers, in archives that keep a copy nobody changes, in sinks that keep the latest documents to look at, in downloaders that applications and people fetch them from, and in web services it is sent to (HTTP (push)). Paper is one destination among others.
 
 ## The pages {#pages}
 
@@ -9,8 +9,8 @@ Docflow is a software-defined document network. A document enters at an entry �
 | Jobs | everyone signed in | print a document to a node you may send to; your jobs and your groups' ([Jobs](jobs.md)) |
 | Topology | everyone signed in | the network as it is laid out, with the activity of the jobs you may see; print at a node ([Looking](topology.md#view)) |
 | Topology, as the editor | the role topology | the same page: nodes placed, connected and set up ([The editor](topology.md#editor), [Node kinds](nodes.md)); Admin in the bar leads there |
-| Admin → Apps | the role topology | the applications with credentials of their own: backends that send and read, and frontends in people's browsers ([Apps](entries.md#apps), [Frontends](exports.md#frontends)) |
-| Admin → Inboxes | the role topology | release or discard what the inboxes hold ([Inboxes](inboxes.md#inboxes)) |
+| Admin → Apps | the role topology | the applications with credentials of their own: backends that send and read, and frontends in people's browsers ([Apps](entries.md#apps), [Frontends](downloads.md#frontends)) |
+| Inboxes | the role topology, and the people of an inbox (its group's members, or its owner) | release or discard what the inboxes hold, as the apps an inbox lists do through the API; in the bar of those who work one, and in Admin's tabs ([Inboxes](inboxes.md#inboxes)) |
 | Admin → Jobs | the role topology | every job, or those sent to one node, and the route each took |
 | Admin → Deliveries | the role topology | what waits for a printer, an archive or a step, and the tick ([Deliveries](inboxes.md#deliveries)) |
 | Audit | the role audit | who did what ([Audit](roles.md#audit)) |
@@ -29,5 +29,5 @@ The process holds nothing: the records and the documents are in a store, so the 
 
 - **You print.** [Jobs](jobs.md). The nodes you may send to are those shared with everyone, your groups' and your own ([Scopes](roles.md#scopes)).
 - **You lay out the network.** [Topology](topology.md), then [Node kinds](nodes.md) for each node's settings, [What flows](flow.md) for what may be connected to what, [Templates and data](templates.md) when forms are filled from data, and [Display boards](displays.md) for the tablets.
-- **You connect an application.** [Where documents come in](entries.md): endpoints and their keys, apps and their tokens, CUPS server nodes and IPP; [HTTP (pull)](exports.md) for applications and people that fetch documents; then [The API](api.md).
+- **You connect an application.** [Where documents come in](entries.md): uploaders and their keys, apps and their tokens, CUPS server nodes and IPP; [Downloaders](downloads.md) for applications and people that fetch documents; then [The API](api.md).
 - **You run the service.** [Running the manager](operate.md).

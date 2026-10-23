@@ -1,7 +1,7 @@
 // Command docflow is BDF Docflow, a document workflow engine on Popcorn
-// Web: documents and data enter at endpoints and virtual printers, flow
+// Web: documents and data enter at uploaders and virtual printers, flow
 // through a topology of nodes, and end on printers, on the tablets of a
-// location (a warehouse), in archives and in exports. The engine is
+// location (a warehouse), in archives and in downloaders. The engine is
 // package docflow; this is its web application: configuration, pages, and the timer of a process.
 //
 // People sign in to its pages at an OIDC IdP (popcornweb's plugin/auth,

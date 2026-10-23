@@ -1,6 +1,6 @@
 # 文書の入口 {#where-documents-come-in}
 
-ジョブは入口からネットワークに入ります。ジョブのページのフォーム、アプリケーションが POST するエンドポイント、コンピュータが印刷する CUPS サーバーノード、バケットのイベントが届く S3 トリガー、API です。誰がどこへ送れるかは[ノードのスコープ](roles.md#scopes)にあります。
+ジョブは入口からネットワークに入ります。ジョブのページのフォーム、アプリケーションが POST するアップローダー、コンピュータが印刷する CUPS サーバーノード、バケットのイベントが届く S3 トリガー、API です。誰がどこへ送れるかは[ノードのスコープ](roles.md#scopes)にあります。
 
 ## ページから {#pages}
 
@@ -12,16 +12,16 @@ IPP が入ってくるのは CUPS サーバーノードだけです（[CUPS サ�
 
 IPP で印刷できる人は運用者の `submit_tokens` で決まります。1 つでも設定されていれば、クライアントはトークンの名前とシークレットを Basic 認証で渡します（アプリも id とシークレットを同じように渡します）。設定がなければ、マネージャーに届く誰もが送れます。クライアントが渡す requesting-user-name は「（… として）」と表示されるだけで、確認はしません。
 
-## エンドポイント {#endpoints}
+## アップローダー {#uploaders}
 
-エンドポイントはアプリケーション（業務システム、WMS）向けの REST の入口です。トポロジー上のノードです（[エンドポイント](nodes.md#endpoint)）。最初に保存したときにキーが 1 度だけ表示され、サイドバーの「キーを回す」で新しいキーを作って 1 度だけ表示します（古いキーは使えなくなります）。マネージャーが保存するのはキーのハッシュだけです。
+アップローダーはアプリケーション（業務システム、WMS）向けの REST の入口です。トポロジー上のノードです（[アップローダー](nodes.md#upload)）。最初に保存したときにキーが 1 度だけ表示され、サイドバーの「キーを回す」で新しいキーを作って 1 度だけ表示します（古いキーは使えなくなります）。マネージャーが保存するのはキーのハッシュだけです。
 
 アプリケーションはキーをベアラートークンとして送ります。
 
 ```sh
 curl -X POST -H "Authorization: Bearer bdfk_…" \
      --data-binary @statement.pdf \
-     "https://<host>/in/erp?name=statement&meta.dept=sales"
+     "https://<host>/api/upload/erp?name=statement&meta.dept=sales"
 ```
 
 フォームとして送るなら次のとおりです。
@@ -30,20 +30,20 @@ curl -X POST -H "Authorization: Bearer bdfk_…" \
 curl -H "Authorization: Bearer bdfk_…" \
      -F 'meta={"dept": "sales"};type=application/json' \
      -F file=@statement.pdf \
-     https://<host>/in/erp
+     https://<host>/api/upload/erp
 ```
 
-- ボディは文書、`accept: data` のエンドポイントならデータです。内容から形式が分からないときは、名前（`?name=`）と `Content-Type` で判別します。
+- ボディは文書、`accept: data` のアップローダーならデータです。内容から形式が分からないときは、名前（`?name=`）と `Content-Type` で判別します。
 - `?name=` はジョブの名前、`?user=` は送った人の名前で、「（… として）」と表示されます。
 - `X-Meta-<Key>` ヘッダと `?meta.<key>=` パラメータはジョブのメタデータです（[メタデータ](flow.md#metadata)）。
 - ボディは `multipart/form-data` でも構いません。`Content-Type` で見分けます。文書はパート `file` に入れ、その名前と `Content-Type` が文書のものになります（名前は `?name=` が優先）。メタデータはパート `meta` に JSON オブジェクトで入れ、ヘッダとパラメータのものより優先されます。別の Docflow の [HTTP (push)](nodes.md#http) ノードはどちらの形でも送ります。
 - `?name=` がなければ、そのままのボディは `Content-Disposition`（`attachment; filename="statement.pdf"`）から名前を取ります。
-- 応答はジョブ（201）で、番号とそこまでのレグが入ります。エンドポイントが受け取らない形式の文書は拒否され（415）、拒否は監査ログに残ります。キーが違えば拒否されます（401）。
-- エンドポイントの直後の[アサート](nodes.md#assert)は、応答の前にメタデータを検査します。通らなかったジョブは `{"error": "…", "job": <番号>, "failures": [{"node", "key", "error"}]}` とともに拒否され（422）、何が通らなかったかをレグで見られるよう、中止として残ります。CUPS サーバーは同じことを IPP の `client-error-bad-request` で答え、何が通らなかったかをステータスメッセージに入れます。
+- 応答はジョブ（201）で、番号とそこまでのレグが入ります。アップローダーが受け取らない形式の文書は拒否され（415）、拒否は監査ログに残ります。キーが違えば拒否されます（401）。
+- アップローダーの直後の[アサート](nodes.md#assert)は、応答の前にメタデータを検査します。通らなかったジョブは `{"error": "…", "job": <番号>, "failures": [{"node", "key", "error"}]}` とともに拒否され（422）、何が通らなかったかをレグで見られるよう、中止として残ります。CUPS サーバーは同じことを IPP の `client-error-bad-request` で答え、何が通らなかったかをステータスメッセージに入れます。
 
-エンドポイントが何を受け取るか（メディアタイプ、テンプレートが埋めるデータのスキーマ、後ろのノードが見るメタデータ）は、その OpenAPI 文書に載ります。サイドバーのリンク OpenAPI か、`GET /api/openapi.json?node=<name>` です（[OpenAPI](api.md#openapi)）。
+アップローダーが何を受け取るか（メディアタイプ、テンプレートが埋めるデータのスキーマ、後ろのノードが見るメタデータ）は、その OpenAPI 文書に載ります。サイドバーのリンク OpenAPI か、`GET /api/openapi.json?node=<name>` です（[OpenAPI](api.md#openapi)）。
 
-`port` を設定すると、プロセスはそのポートでも待ち受け、そこへの POST はすべてこのエンドポイント宛てになります。パスを設定できないアプリケーション向けです。サーバーレスではポートを使えません。
+アプリケーションが呼ぶものはすべて、マネージャー自身のサーバーの API にあり、ノードの種類と名前で決まります。アップローダーは `/api/upload/<name>`、S3 トリガーは `/api/s3-trigger/<name>`、インボックスは `/api/inbox/<name>`（[インボックスの API](inboxes.md#api)）、ダウンローダーは `/api/download/<name>`（[ダウンローダー](downloads.md)）です。アップローダーには専用のポートがありません。ポートで待ち受けるのは CUPS サーバーだけで、IPP のためです。
 
 ## CUPS サーバーノード {#cups}
 
@@ -53,29 +53,30 @@ CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷�
 
 ## アプリ {#apps}
 
-アプリは、エンドポイントのキーではなく自前の資格情報で送ったり、エクスポートを読んだりするアプリケーションです。資格情報はアプリのもので、監査ログとジョブにはどのアプリが送ったかが残ります。管理 → アプリで、管理者が登録します。id、題名、そのジョブを見られるメンバーのグループ（任意）、そしてスコープです。
+アプリは、アップローダーのキーではなく自前の資格情報で送ったり、インボックスを扱ったり、ダウンローダーを読んだりするアプリケーションです。資格情報はアプリのもので、監査ログとジョブにはどのアプリが送ったかが残ります。管理 → アプリで、管理者が登録します。id、題名、そのジョブを見られるメンバーのグループ（任意）、そしてスコープです。
 
 | スコープ | |
 |---|---|
 | `print` | 文書を送る |
 | `print.template` | テンプレートを埋める。データを送る |
 | `jobs.cancel` | 自分のジョブを取り消す |
-| `export` | 自分を載せたエクスポートを読む（[バックエンド](exports.md#backends)） |
+| `inbox` | 自分を挙げたインボックスを扱う。留まっているものを一覧し、サムネイルと文書を見て、送り出しと破棄をする（[インボックスの API](inboxes.md#api)） |
+| `download` | 自分を挙げたダウンローダーを読む（[バックエンド](downloads.md#backends)） |
 | `tick` | `POST /api/tick` を呼ぶ。スケジューラ向け |
 | `admin` | 管理者として API を使う。スクリプト向け |
 
 シークレットはアプリを追加したときに 1 度だけ表示され、「シークレットを回す」で新しいものを作ります（古いものは使えなくなります）。「無効にする」はアプリの資格情報と発行済みのトークンを拒否し、「削除」はアプリを消します。
 
-アプリは `POST /oauth/token`（OAuth 2.0 のクライアントクレデンシャルグラント）でトークンを取り、ベアラーとして、そのアプリを「許可するアプリ」（エンドポイントのサイドバー）に挙げたエンドポイントへ送ります。または、同じようにそのアプリを挙げた CUPS サーバーノードへ、id とシークレットを Basic 認証で渡して IPP で印刷します。
+アプリは `POST /oauth/token`（OAuth 2.0 のクライアントクレデンシャルグラント）でトークンを取り、ベアラーとして、そのアプリを「許可するアプリ」（アップローダーのサイドバー）に挙げたアップローダーへ送ります。または、同じようにそのアプリを挙げた CUPS サーバーノードへ、id とシークレットを Basic 認証で渡して IPP で印刷します。
 
 ```sh
 curl -u 'erp:<secret>' -d grant_type=client_credentials https://<host>/oauth/token
 # {"access_token": "…", "token_type": "Bearer", "expires_in": 600, "scope": "print"}
-curl -X POST -H "Authorization: Bearer <access_token>" --data-binary @statement.pdf "https://<host>/in/erp?name=statement"
+curl -X POST -H "Authorization: Bearer <access_token>" --data-binary @statement.pdf "https://<host>/api/upload/erp?name=statement"
 ```
 
 トークンは 10 分間有効です。アプリは自分のジョブを見られ（`GET /api/my/jobs`）、スコープ `jobs.cancel` があれば取り消せます。ノードがグループを与えないとき、アプリのジョブはアプリのグループのものです。
 
 ## スクリプト {#scripts}
 
-スクリプトは運用者の管理トークン、またはサブミットトークンの `name:secret` をベアラーとして送ります。`POST /api/destinations/<node>/jobs` に文書をボディとして送り、エンドポイントと同じく `?name=`、`?user=`、メタデータを受け取ります（[ジョブ](api.md#jobs)）。
+スクリプトは運用者の管理トークン、またはサブミットトークンの `name:secret` をベアラーとして送ります。`POST /api/destinations/<node>/jobs` に文書をボディとして送り、アップローダーと同じく `?name=`、`?user=`、メタデータを受け取ります（[ジョブ](api.md#jobs)）。

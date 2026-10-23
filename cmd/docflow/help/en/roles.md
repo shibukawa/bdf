@@ -25,11 +25,11 @@ Every node has a scope and an owner, set in its sidebar on the topology:
 | `group`, with a group as owner | the group's members | the group's: its members see them |
 | `personal`, with a person's email as owner | that person | theirs |
 
-A display without a group of its own gives its jobs its fallback printer's group. An app's jobs are the app's group's when the node gives them none. The scope says nothing to applications and IPP clients: an endpoint takes what its key or its apps send, and IPP what the submit tokens allow ([Where documents come in](entries.md)).
+The scope of an inbox also says who works it, besides the role topology: the members of a `group` inbox, the owner of a `personal` one; a `shared` inbox is the role topology's ([Who works an inbox](inboxes.md#workers)). A display without a group of its own gives its jobs its fallback printer's group. An app's jobs are the app's group's when the node gives them none. The scope says nothing to applications and IPP clients: an uploader takes what its key or its apps send, and IPP what the submit tokens allow ([Where documents come in](entries.md)).
 
 ## Who sees a job {#who-sees}
 
-A job records who sent it as the manager verified it — the person signed in, the app, the token, the endpoint, or anonymous — apart from the name the sender gave, shown as "(as …)". The sender sees the job, so do the members of its group, and an administrator or an auditor sees every job. The sender and an administrator cancel it; an app cancels its own with the scope `jobs.cancel`. A reprint is a new job of the person who reprinted.
+A job records who sent it as the manager verified it — the person signed in, the app, the token, the uploader, or anonymous — apart from the name the sender gave, shown as "(as …)". The sender sees the job, so do the members of its group, and an administrator or an auditor sees every job. The sender and an administrator cancel it; an app cancels its own with the scope `jobs.cancel`. A reprint is a new job of the person who reprinted.
 
 ## Audit {#audit}
 
@@ -39,15 +39,16 @@ The Audit page (the role `audit`) lists who did what, newest first: when, who, t
 |---|---|
 | `login`, `login-refused` | a sign-in, and one the rules refused |
 | `put-node`, `delete-node` | a node saved or deleted |
-| `rotate-key` | an endpoint's key rotated |
+| `rotate-key` | an uploader's key rotated |
 | `put-template`, `delete-template` | a template uploaded or deleted |
 | `put-app`, `delete-app`, `rotate-app-secret` | an app registered, changed or deleted, its secret rotated |
 | `enrollment-code`, `enroll`, `remove-device` | a code made for a display, a device enrolled, a device removed |
 | `refuse-document` | an entry refused a document for its format |
 | `token-refused` | an app's credentials refused at `/oauth/token` |
 | `oauth-code`, `user-token`, `code-refused` | a code given to a public client for a person, a token of the person made of it, an exchange of a code refused |
-| `export-document` | a document downloaded from an export, and by whom |
-| `release-item`, `discard-item` | an inbox's item released or discarded, and by whom |
+| `download-document` | a document downloaded from a downloader, and by whom |
+| `inbox-document` | a document an inbox holds downloaded through its API, and by whom |
+| `release-item`, `discard-item` | an inbox's item released or discarded, and by whom: the person or the app, and the worker's name given |
 | `cancel-job`, `reprint` | a job canceled, a job reprinted |
 
 Under the log, the recent jobs and the route each took.

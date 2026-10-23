@@ -85,8 +85,8 @@ func PagesAppsLastUsed(loc pw.Locale) string {
 }
 
 var tblPagesAppsNote = [...][]pwruntime.RichSegment{
-	{{Lit: "Applications with credentials of their own. A backend takes a token at "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: " (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts."}}, // en
-	{{Lit: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたエンドポイントに送り、自分を挙げた HTTP (pull) ノードを読みます（スコープ export）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: "（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人として HTTP (pull) ノードを読みます。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"}},                                                                                                                                                                                                                                                                                         // ja
+	{{Lit: "Applications with credentials of their own. A backend takes a token at "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " with its id and secret (client credentials), sends to the uploaders that list it among their apps, works the inboxes that list it (the scope inbox) and reads the downloaders that list it (the scope download); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: " (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the downloaders and work the inboxes as that person. The scopes tick and admin are for a scheduler and for scripts."}}, // en
+	{{Lit: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたアップローダーに送り、自分を挙げたインボックスを扱い（スコープ inbox）、自分を挙げたダウンローダーを読みます（スコープ download）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: "（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人としてダウンローダーを読み、インボックスを扱います。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"}},                                                                                                                                                                                                                                                                                                                               // ja
 }
 
 // PagesAppsNote renders message "pages.apps-note".
@@ -145,8 +145,8 @@ func PagesAppsTitlePlaceholder(loc pw.Locale) string {
 }
 
 var tblPagesAppsWhere = [...]string{
-	"Endpoints / redirect URIs", // en
-	"エンドポイント / リダイレクト URI",      // ja
+	"Nodes / redirect URIs", // en
+	"ノード / リダイレクト URI",      // ja
 }
 
 // PagesAppsWhere renders message "pages.apps-where".
@@ -195,8 +195,8 @@ func PagesAuditJobsHeading(loc pw.Locale) string {
 }
 
 var tblPagesAuditNote = [...]string{
-	"Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first.", // en
-	"サインイン、トポロジー・キー・テンプレートの変更、デバイス、エンドポイントが拒否した文書、インボックスで人がしたこと、取り消しです。新しい順に並びます。",                                                                                // ja
+	"Sign-ins, changes of the topology, keys and templates, devices, documents an uploader refused, what people and apps did in inboxes, and cancellations. Newest first.", // en
+	"サインイン、トポロジー・キー・テンプレートの変更、デバイス、アップローダーが拒否した文書、インボックスで人やアプリがしたこと、取り消しです。新しい順に並びます。",                                                                                     // ja
 }
 
 // PagesAuditNote renders message "pages.audit-note".
@@ -554,6 +554,16 @@ func PagesHelpTitle(loc pw.Locale, chapter string) string {
 	return pwruntime.RenderMessage(tblPagesHelpTitle[loc.Index()], chapter)
 }
 
+var tblPagesInboxesNote = [...]string{
+	"What the inboxes you work hold, oldest first: release an item to a node, or discard it. Applications do the same through the API (/api/inbox).", // en
+	"自分が扱うインボックスに留まっているもの（古い順）です。項目をノードへ送り出すか、破棄します。アプリケーションは API（/api/inbox）で同じことができます。",                                                            // ja
+}
+
+// PagesInboxesNote renders message "pages.inboxes-note".
+func PagesInboxesNote(loc pw.Locale) string {
+	return tblPagesInboxesNote[loc.Index()]
+}
+
 var tblPagesInboxesTitle = [...]string{
 	"Inboxes · BDF Docflow", // en
 	"インボックス · BDF Docflow",  // ja
@@ -655,8 +665,8 @@ func PagesJobsTitle(loc pw.Locale) string {
 }
 
 var tblPagesKeyModalHeading = [...]string{
-	"Endpoint key", // en
-	"エンドポイントのキー",   // ja
+	"The node's key", // en
+	"ノードのキー",         // ja
 }
 
 // PagesKeyModalHeading renders message "pages.key-modal-heading".
@@ -665,8 +675,8 @@ func PagesKeyModalHeading(loc pw.Locale) string {
 }
 
 var tblPagesKeyModalNote = [...]string{
-	"It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.", // en
-	"表示されるのは今だけです。エンドポイントに送るアプリケーションにコピーしてください。新しいキーが要るときは回します。",                                                 // ja
+	"It is shown only now: copy it into the application that sends to the node. Rotate it to get a new one.", // en
+	"表示されるのは今だけです。このノードに送るアプリケーションにコピーしてください。新しいキーが要るときは回します。",                                               // ja
 }
 
 // PagesKeyModalNote renders message "pages.key-modal-note".
@@ -834,44 +844,24 @@ func PagesKindDisplayNote(loc pw.Locale) string {
 	return tblPagesKindDisplayNote[loc.Index()]
 }
 
-var tblPagesKindEndpoint = [...]string{
-	"Endpoint", // en
-	"エンドポイント",  // ja
+var tblPagesKindDownload = [...]string{
+	"Downloader", // en
+	"ダウンローダー",    // ja
 }
 
-// PagesKindEndpoint renders message "pages.kind-endpoint".
-func PagesKindEndpoint(loc pw.Locale) string {
-	return tblPagesKindEndpoint[loc.Index()]
+// PagesKindDownload renders message "pages.kind-download".
+func PagesKindDownload(loc pw.Locale) string {
+	return tblPagesKindDownload[loc.Index()]
 }
 
-var tblPagesKindEndpointNote = [...]string{
-	"a REST entry for applications", // en
-	"アプリケーション向けの REST の入口",          // ja
-}
-
-// PagesKindEndpointNote renders message "pages.kind-endpoint-note".
-func PagesKindEndpointNote(loc pw.Locale) string {
-	return tblPagesKindEndpointNote[loc.Index()]
-}
-
-var tblPagesKindExport = [...]string{
-	"HTTP (pull)", // en
-	"HTTP (pull)", // ja
-}
-
-// PagesKindExport renders message "pages.kind-export".
-func PagesKindExport(loc pw.Locale) string {
-	return tblPagesKindExport[loc.Index()]
-}
-
-var tblPagesKindExportNote = [...]string{
+var tblPagesKindDownloadNote = [...]string{
 	"fetched by applications and people from an inbox or an archive", // en
 	"インボックスかアーカイブのものを、アプリケーションや人が取りに来る",                              // ja
 }
 
-// PagesKindExportNote renders message "pages.kind-export-note".
-func PagesKindExportNote(loc pw.Locale) string {
-	return tblPagesKindExportNote[loc.Index()]
+// PagesKindDownloadNote renders message "pages.kind-download-note".
+func PagesKindDownloadNote(loc pw.Locale) string {
+	return tblPagesKindDownloadNote[loc.Index()]
 }
 
 var tblPagesKindFilter = [...]string{
@@ -925,8 +915,8 @@ func PagesKindInbox(loc pw.Locale) string {
 }
 
 var tblPagesKindInboxNote = [...]string{
-	"held until a person releases it", // en
-	"人が送り出すまで留める",                     // ja
+	"held until a person or an app releases it", // en
+	"人かアプリが送り出すまで留める",                           // ja
 }
 
 // PagesKindInboxNote renders message "pages.kind-inbox-note".
@@ -1134,6 +1124,26 @@ func PagesKindTemplateNote(loc pw.Locale) string {
 	return tblPagesKindTemplateNote[loc.Index()]
 }
 
+var tblPagesKindUpload = [...]string{
+	"Uploader", // en
+	"アップローダー",  // ja
+}
+
+// PagesKindUpload renders message "pages.kind-upload".
+func PagesKindUpload(loc pw.Locale) string {
+	return tblPagesKindUpload[loc.Index()]
+}
+
+var tblPagesKindUploadNote = [...]string{
+	"a REST entry for applications", // en
+	"アプリケーション向けの REST の入口",          // ja
+}
+
+// PagesKindUploadNote renders message "pages.kind-upload-note".
+func PagesKindUploadNote(loc pw.Locale) string {
+	return tblPagesKindUploadNote[loc.Index()]
+}
+
 var tblPagesLanguageSwitch = [...]string{
 	"The language of the pages", // en
 	"ページの言語",                    // ja
@@ -1305,8 +1315,8 @@ func PagesSigninDevice(loc pw.Locale) string {
 }
 
 var tblPagesSigninLead = [...]string{
-	"A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.", // en
-	"ソフトウェアで定義する文書のネットワークです。文書は仮想プリンタと API のエンドポイントから入り、組み立てたノードを流れて、ディスプレイボード、プリンタ、アーカイブに行き着きます。",                                                                                      // ja
+	"A software-defined document network: documents enter at virtual printers and the API's uploaders, flow through the nodes you compose, and end on display boards, printers and archives.", // en
+	"ソフトウェアで定義する文書のネットワークです。文書は仮想プリンタと API のアップローダーから入り、組み立てたノードを流れて、ディスプレイボード、プリンタ、アーカイブに行き着きます。",                                                                                            // ja
 }
 
 // PagesSigninLead renders message "pages.signin-lead".
@@ -1515,8 +1525,8 @@ func PagesTopologyEditNote(loc pw.Locale) string {
 }
 
 var tblPagesTopologyOpenapiTitle = [...]string{
-	"The OpenAPI document of every endpoint and HTTP (pull) node", // en
-	"すべてのエンドポイントと HTTP (pull) ノードの OpenAPI 文書",                    // ja
+	"The OpenAPI document of every uploader, inbox and downloader", // en
+	"すべてのアップローダー、インボックス、ダウンローダーの OpenAPI 文書",                       // ja
 }
 
 // PagesTopologyOpenapiTitle renders message "pages.topology-openapi-title".

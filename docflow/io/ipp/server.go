@@ -372,7 +372,7 @@ func (s *server) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 	name := firstOr(q.text("job-name"), q.text("document-name"))
 	meta := s.meta(q)
 	if q.by.Kind == docflow.PrincipalApp {
-		// an app prints to the endpoints that list it
+		// an app prints to the entries that list it
 		if err := s.m.MaySend(ctx, q.r, q.dest); err != nil {
 			q.fail(ipp.StatusClientErrorNotAuthorized, "%v", err)
 			return

@@ -163,10 +163,8 @@ func (a *App) Handler() http.Handler {
 		mux.Handle(p+"/", mh)
 		mux.Handle(p, mh)
 	}
-	mux.Handle(docflow.InPath+"/", mh)
-	mux.Handle(docflow.OutPath+"/", mh)
 	mux.Handle("/oauth/", mh)
-	mux.Handle("/api/", mh)
+	mux.Handle(docflow.APIPath+"/", mh)
 	mux.Handle("/device/", mh)
 	// the pages: a sign-in at the top; the jobs of the person signed in;
 	// the administrator's pages and audit log
@@ -199,8 +197,13 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/apps", a.page(docflow.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Apps(AppsParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /admin/inboxes", a.page(docflow.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	// the inboxes are worked by the role topology and by the people of
+	// an inbox's group (the API tells whose); /admin/inboxes, as it was
+	mux.HandleFunc("GET /inboxes", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Inboxes(InboxesParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin/inboxes", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
+		http.Redirect(w, r, "/inboxes", http.StatusSeeOther)
 	}))
 	mux.HandleFunc("GET /admin/jobs", a.page(docflow.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, AdminJobs(AdminJobsParams{Account: ac}))
@@ -237,9 +240,17 @@ func (a *App) page(role string, fn func(http.ResponseWriter, *http.Request, Acco
 		case role != "" && !v.Can(role):
 			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v, r), Role: role}))
 		default:
-			fn(w, r, account(v, r))
+			ac := account(v, r)
+			ac.Inboxes = ac.Topology || a.worksInbox(r.Context(), v)
+			fn(w, r, ac)
 		}
 	})
+}
+
+// worksInbox tells whether a person works an inbox, for the bar's link.
+func (a *App) worksInbox(ctx context.Context, v *docflow.Viewer) bool {
+	ins, err := a.m.Inboxes(ctx, v)
+	return err == nil && len(ins) > 0
 }
 
 func account(v *docflow.Viewer, r *http.Request) Account {

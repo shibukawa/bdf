@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters, asserts, branches and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends; an HTTP (pull) node after an inbox or an archive is where applications and people fetch it, and an HTTP (push) node sends it to a web service. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
+Every node has a kind, and the settings of its kind. The entries — uploaders, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters, asserts, branches and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends; a downloader after an inbox or an archive is where applications and people fetch it, and an HTTP (push) node sends it to a web service. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to uploaders, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
 
 ## Every node {#common}
 
@@ -14,9 +14,9 @@ Every node has a kind, and the settings of its kind. The entries — endpoints, 
 
 A line in the sidebar tells what the node takes and what it sends on ([Kinds of payload](flow.md#kinds)).
 
-## Endpoint {#endpoint}
+## Uploader {#upload}
 
-A REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document as the body, or data for a template node, and forwards the job to every node of `to`. [Endpoints](entries.md#endpoints) has the requests.
+The kind `upload`. A REST entry for applications: `POST /api/upload/<name>` with the uploader's own key, or an app's token, takes a document as the body, or data for a template node, and forwards the job to every node of `to`. [Uploaders](entries.md#uploaders) has the requests.
 
 | Setting | |
 |---|---|
@@ -24,11 +24,10 @@ A REST entry for applications: `POST /in/<name>` with the endpoint's own key tak
 | Accepts (`accept`) | `file`: documents (the default); `data`: JSON, YAML, CSV, an Excel workbook or a Parquet file, for a template node after it |
 | Sends on (`output`) | of a document: `bdf`, the `.bdf` made of it (the default), or `file`, the file as received, for a convert node or an archive after it |
 | Formats (`formats`) | the formats it takes, as the converter names them (`pdf`, `docx`, `image`, `csv`, `bdf`, `json`, `yaml` …); none takes any. A file of another format is refused (415), and the refusal is in the audit log |
-| Metadata (`meta`) | keys the endpoint adds to every job it takes; they win over the sender's ([Metadata](flow.md#metadata)) |
-| Port (`port`) | a port of the process's own: every POST to it is to this endpoint (none on a serverless deployment). The sidebar fills a new endpoint's with the first port no node has, from 6310; empty it for none |
+| Metadata (`meta`) | keys the uploader adds to every job it takes; they win over the sender's ([Metadata](flow.md#metadata)) |
 | Apps allowed (`apps`) | the apps that may send here with their own credentials, besides the key ([Apps](entries.md#apps)) |
 
-The key is shown once, when the endpoint is made or the key rotated; the manager keeps only its hash.
+The key is shown once, when the uploader is made or the key rotated; the manager keeps only its hash.
 
 ## CUPS server (source) {#cups}
 
@@ -40,10 +39,10 @@ The IPP entry, for computers and business systems, and the only one: a CUPS serv
 | Port (`port`) | the port the server listens on; none given: the first port no node has, from 6310 (none on a serverless deployment) |
 | TLS (`tls_cert`, `tls_key`) | the files of a certificate and its key: `ipps`; without them, plain `ipp` |
 | Bonjour (`dnssd`) | advertises the printer on the local network with DNS-SD (Bonjour) as an AirPrint printer: Macs list it under Add Printer → Default, iPhones and iPads in Print. On by default, with a port (none on a serverless deployment); `false` keeps it off the network |
-| Metadata (`meta`) | as an endpoint's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
+| Metadata (`meta`) | as an uploader's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
 | Apps allowed (`apps`) | the apps that may print here with their id and secret as IPP Basic ([Apps](entries.md#apps)) |
 
-What computers print is a document: a CUPS server has no Accepts, Sends on or Formats of an endpoint, and sends on the `.bdf` it makes. A file to send on as received goes to an endpoint or an S3 trigger.
+What computers print is a document: a CUPS server has no Accepts, Sends on or Formats of an uploader, and sends on the `.bdf` it makes. A file to send on as received goes to an uploader or an S3 trigger.
 
 ## Queue {#queue}
 
@@ -75,7 +74,7 @@ Sends the job on by rules: the first rule whose match fits the job forwards it t
 
 Checks the job's metadata: a job that passes every check goes on to every node of `to`, as it reached the assert; one that fails a check goes no further, and goes to `on_error` with what failed. [Checks](flow.md#checks) has what a check looks at.
 
-An assert right after the node a job is sent to — an entry, or a queue sent to from the pages or the API — or that node itself is the sender's gate: the job is checked before it goes anywhere, and the sender's request is answered only once its checks pass. A job that fails is refused to the sender with what failed — 422 of REST, `client-error-bad-request` of IPP ([Endpoints](entries.md#endpoints)) — and kept, aborted, with a leg `refused` at the assert. An assert further on checks the job as it reaches it, after the sender was answered: a job it refuses is aborted there.
+An assert right after the node a job is sent to — an entry, or a queue sent to from the pages or the API — or that node itself is the sender's gate: the job is checked before it goes anywhere, and the sender's request is answered only once its checks pass. A job that fails is refused to the sender with what failed — 422 of REST, `client-error-bad-request` of IPP ([Uploaders](entries.md#uploaders)) — and kept, aborted, with a leg `refused` at the assert. An assert further on checks the job as it reaches it, after the sender was answered: a job it refuses is aborted there.
 
 | Setting | |
 |---|---|
@@ -132,12 +131,14 @@ Signs the `.bdf` document that reaches it with Docflow's key, as a witness, and 
 
 ## Inbox {#inbox}
 
-Holds the job until a person releases it to nodes, or discards it, on Admin → Inboxes ([Inboxes](inboxes.md#inboxes)). Released and discarded items stay shown for `keep`. An [HTTP (pull)](#export) node in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded.
+Holds the job until someone releases it to nodes, or discards it: a person on the Inboxes page ([Inboxes](inboxes.md#inboxes)), or an application through the API at `/api/inbox/<name>` ([The inboxes' API](inboxes.md#api)). Released and discarded items stay shown for `keep`. A [downloader](#download) in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded. Who works it is its scope's people and its apps ([Who works an inbox](inboxes.md#workers)).
 
 | Setting | |
 |---|---|
-| Releases to (`to`) | the nodes an item may be released to; none: any node. Its HTTP (pull) nodes are not among them |
+| Releases to (`to`) | the nodes an item may be released to; none: any node, which only the role topology releases to. Its downloaders are not among them |
 | Keep (`keep`) | how long ended items stay (14 days) |
+| Apps allowed (`apps`) | the apps that work it with their token, with the scope `inbox` |
+| Scope and owner | of a `group` inbox, its members work it; of a `personal` one, its owner; a `shared` one is the role topology's to work |
 
 ## Display {#display}
 
@@ -174,44 +175,44 @@ The keys `ipp.job-account-id` and the others go on to the queue as they go on to
 
 ## Archive {#archive}
 
-Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an HTTP (pull) node, which lists it ([HTTP (pull)](exports.md)).
+Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: a downloader, which lists it ([Downloaders](downloads.md)).
 
 | Setting | |
 |---|---|
 | Store (`store`) | a documents store: `bbolt:path`, `s3://bucket?region=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | Collection (`collection`) | the prefix of its objects: `archive-<name>` by default |
-| Forwards to (`to`) | the nodes the job goes on to once written: HTTP (pull) nodes |
+| Forwards to (`to`) | the nodes the job goes on to once written: downloaders |
 
 ## Sink {#sink}
 
-Keeps the latest documents that reach it, to look at on the topology: the first page shows on the node, the first page of each in the sidebar; a click on one shows every page large, with its download. An older one goes when a newer comes. A sink is where a document is seen without a printer or a device: behind an endpoint or a CUPS server while they are set up.
+Keeps the latest documents that reach it, to look at on the topology: the first page shows on the node, the first page of each in the sidebar; a click on one shows every page large, with its download. An older one goes when a newer comes. A sink is where a document is seen without a printer or a device: behind an uploader or a CUPS server while they are set up.
 
 | Setting | |
 |---|---|
 | Latest (`latest`) | how many it keeps (10) |
 
-## HTTP (pull) {#export}
+## Downloader {#download}
 
-The kind `export`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. Its sidebar lists the latest entries the viewer may read, a `.bdf` document's with its first page: a click shows every page large, with its download. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
+The kind `download`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /api/download/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. Its sidebar lists the latest entries the viewer may read, a `.bdf` document's with its first page: a click shows every page large, with its download. [Downloaders](downloads.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
 
 | Setting | |
 |---|---|
 | Owner's key (`by`) | the metadata key whose value says whose a document is: a customer's id or email the sender gave. Empty: a person reads what they could see of the job |
-| Subject (`subject`) | what of a person is compared with the owner: `email` (the default), `sub`, `id` or `group` ([Whose a document is](exports.md#owners)) |
+| Subject (`subject`) | what of a person is compared with the owner: `email` (the default), `sub`, `id` or `group` ([Whose a document is](downloads.md#owners)) |
 | Fields (`fields`) | metadata keys copied into the entries listed, for the reader to show or pick by (up to 16) |
 | Entries (`entries`) | how many of the latest entries are listed for everyone and for each owner (1000); an older entry is still read by its job's number |
-| Apps allowed (`apps`) | the backends that read every entry with their token (the scope `export`); a frontend reads as the person and needs no listing |
+| Apps allowed (`apps`) | the backends that read every entry with their token (the scope `download`); a frontend reads as the person and needs no listing |
 
 ## S3 Trigger {#s3-trigger}
 
-An entry for the objects put in a bucket. It does not listen to the bucket: an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference to `POST /in/<name>` with the node's key, made and rotated as an endpoint's. The body is `{"bucket": …, "key": …}`, an S3 notification (`Records`, one object), or the event EventBridge sends (`detail`). The node reads the object itself, and the job goes on with `s3.bucket` and `s3.key` in its metadata.
+An entry for the objects put in a bucket. It does not listen to the bucket: an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference to `POST /api/s3-trigger/<name>` with the node's key, made and rotated as an uploader's. The body is `{"bucket": …, "key": …}`, an S3 notification (`Records`, one object), or the event EventBridge sends (`detail`). The node reads the object itself, and the job goes on with `s3.bucket` and `s3.key` in its metadata.
 
 | Setting | |
 |---|---|
 | Bucket (`url`) | `s3://bucket?region=…`; `&endpoint=…` for a service other than AWS's (MinIO, R2) |
 | Credential (`credential`) | `access-key:secret-key`, or with `:session-token`; none takes AWS's own (the environment, the role) ([Credentials](#credentials)) |
 | Prefix (`path`) | the keys it takes are under this prefix; a key elsewhere, or another bucket, is refused (403) |
-| Forwards to, Accepts, Sends on, Formats, Metadata | as an endpoint's |
+| Forwards to, Accepts, Sends on, Formats, Metadata | as an uploader's |
 
 ## Render {#render}
 
@@ -254,7 +255,7 @@ Writes what reaches it to a bucket, once, and does not look back: an object ther
 
 ## HTTP (push) {#http}
 
-The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential its key or an app's token: the `.bdf` goes there as it is, with its name and its metadata as the sender's, in either body ([Endpoints](entries.md#endpoints)). 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [HTTP (pull)](#export).
+The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/api/upload/<node>` and the credential its key or an app's token: the `.bdf` goes there as it is, with its name and its metadata as the sender's, in either body ([Uploaders](entries.md#uploaders)). 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [downloader](#download).
 
 | Setting | |
 |---|---|
@@ -264,7 +265,7 @@ The kind `http`. Sends what reaches it to a web service in a request, the docume
 | Headers (`headers`) | more headers, with `{{meta.<key>}}`; with a `multipart` body, not `Content-Type` or `Content-Disposition` |
 | Credential (`credential`) | the Authorization: a token, sent as Bearer, or a whole value (`Basic …`) |
 
-Render, Notify, Mail (SMTP), S3 and HTTP have no form of their own in the sidebar: their settings are a JSON box there. An S3 trigger has a form, as an endpoint has.
+Render, Notify, Mail (SMTP), S3 and HTTP have no form of their own in the sidebar: their settings are a JSON box there. An S3 trigger has a form, as an uploader has.
 
 ## On error {#on-error}
 

@@ -11,7 +11,7 @@ import (
 // The core's kinds of node. Their settings are checked here; what a job
 // that reaches one does is in route.go and the file of the kind.
 func init() {
-	RegisterKind(Kind{Name: KindEndpoint, Role: RoleEntry, PassesOn: true})
+	RegisterKind(Kind{Name: KindUpload, Title: "Uploader", Role: RoleEntry, PassesOn: true})
 	RegisterKind(Kind{Name: KindQueue, Role: RoleRoute, PassesOn: true, Check: checkForward})
 	RegisterKind(Kind{Name: KindClass, Role: RoleRoute, PassesOn: true, Check: checkClass, route: (*Manager).routeClass})
 	RegisterKind(Kind{Name: KindFilter, Role: RoleRoute, PassesOn: true, Check: checkFilter, route: (*Manager).routeFilter})
@@ -33,9 +33,9 @@ func init() {
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeSink(ctx, r, name, from)
 		}})
-	RegisterKind(Kind{Name: KindExport, Title: "HTTP (pull)", Role: RoleExit, Takes: []string{PayloadStocked}, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkExport(ctx, in, n) },
+	RegisterKind(Kind{Name: KindDownload, Title: "Downloader", Role: RoleExit, Takes: []string{PayloadStocked}, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkDownload(ctx, in, n) },
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
-			m.routeExport(ctx, r, name, from)
+			m.routeDownload(ctx, r, name, from)
 		}})
 }
 
@@ -57,8 +57,9 @@ func checkForward(ctx context.Context, m *Manager, in Node, n *Node) error {
 
 // checkEntry checks the settings every entry has: where it forwards, what
 // it accepts and sends on, the formats it takes, the metadata it adds,
-// its own port, and the apps that may send to it with their own
-// credentials (an endpoint's REST, a CUPS server's IPP Basic).
+// its own port (of a kind that serves one: a CUPS server's IPP; the
+// others are reached at the API), and the apps that may send to it with
+// their own credentials (an uploader's REST, a CUPS server's IPP Basic).
 func checkEntry(ctx context.Context, m *Manager, k *Kind, in Node, n *Node) error {
 	n.To = cleanNames(in.To)
 	n.Accept = or(in.Accept, AcceptFile)
@@ -80,7 +81,15 @@ func checkEntry(ctx context.Context, m *Manager, k *Kind, in Node, n *Node) erro
 	if n.Meta, err = claimedMeta(in.Meta); err != nil {
 		return err
 	}
-	n.Port = in.Port
+	if ServesPort(k.Name) {
+		n.Port = in.Port
+	}
+	return m.checkApps(ctx, in, n)
+}
+
+// checkApps takes the apps a node lists: those that send to an entry,
+// read a downloader or work an inbox with their own credentials.
+func (m *Manager) checkApps(ctx context.Context, in Node, n *Node) error {
 	n.Apps = cleanNames(in.Apps)
 	for _, id := range n.Apps {
 		if _, err := m.App(ctx, id); err != nil {
@@ -153,7 +162,7 @@ func checkFilter(ctx context.Context, m *Manager, in Node, n *Node) error {
 
 func checkInbox(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.To, n.Keep = cleanNames(in.To), in.Keep
-	return nil
+	return m.checkApps(ctx, in, n)
 }
 
 func checkArchive(ctx context.Context, m *Manager, in Node, n *Node) error {

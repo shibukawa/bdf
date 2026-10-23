@@ -86,12 +86,12 @@ export function badge(text, cls = "badge-ghost") {
 }
 
 // KINDS are the kinds' names, as the palette says them (pages.yaml).
-export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), assert: _("Assert"), branch: _("Branch"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: "HTTP (pull)", render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
+export const KINDS = { upload: _("Uploader"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), assert: _("Assert"), branch: _("Branch"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), download: _("Downloader"), render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
 export const KIND_BADGE = {
-  endpoint: "badge-accent badge-soft",
+  upload: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
-  export: "badge-accent badge-soft",
+  download: "badge-accent badge-soft",
   filter: "badge-secondary badge-soft",
   assert: "badge-secondary badge-soft",
   branch: "badge-secondary badge-soft",
@@ -113,7 +113,7 @@ export function kindBadge(kind) {
 
 // The kinds of payload that flow along the edges (kinds.go): a .bdf
 // document, data for a template, any file as received, or a stocked
-// file, which an inbox or an archive keeps and sends to HTTP (pull)
+// file, which an inbox or an archive keeps and sends to a downloader
 // alone. Ports, edges and the borders of the nodes are colored by them
 // (canvas.js), as are the jobs' badges: blue, green, amber, cyan.
 export const PAYLOADS = { bdf: _(".bdf document"), data: _("data (JSON, YAML, CSV, Excel, Parquet)"), any: _("any file as received"), stocked: _("stocked file (any format, kept by an inbox or an archive)") };
@@ -233,13 +233,13 @@ export async function keptSection(name) {
   return box;
 }
 
-// listedSection shows the entries of an export the viewer may read:
+// listedSection shows the entries of a downloader the viewer may read:
 // what an archive before it wrote (or an inbox holds), with the owner
 // each is listed for; a click shows one, with its download.
 export async function listedSection(name) {
   const box = el("div", undefined, { className: "mt-3 flex flex-col gap-2 border-t border-base-300 pt-3" });
   box.append(el("h4", _("Listed here"), { className: "font-semibold" }));
-  const at = `/out/${encodeURIComponent(name)}`;
+  const at = `/api/download/${encodeURIComponent(name)}`;
   const entries = await api("GET", `${at}?limit=20`);
   if (!entries.length) box.append(el("p", _("Nothing you may read yet."), { className: "text-xs text-base-content/60" }));
   const list = el("ul", undefined, { className: "flex flex-col gap-1 text-xs" });

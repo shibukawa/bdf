@@ -6,7 +6,8 @@
 // node's output port onto another node, and set up in the sidebar (the
 // fields of the node's kind under Settings; how it is reached from
 // outside and what is at it under Usage: a CUPS server's printer, an
-// endpoint's request and key, a display's devices and enrollment codes);
+// uploader's request and key, the API of an inbox and of a downloader, a
+// display's devices and enrollment codes);
 // everything goes through the API, and the server checks a node when it
 // is put (its edges, its name, no cycle, and that every node takes the
 // kinds of payload that reach it along a new edge; a change of settings
@@ -27,9 +28,9 @@ const SUBJECTS = { email: _("email: the person's email, as the IdP verified it")
 const POLL_MS = 4000;
 
 let topo = []; // the nodes, as /api/topology lists them
-let formats = []; // the formats an endpoint may take
+let formats = []; // the formats an entry may take
 let me = null; // /api/me: whether this process has ports of its own
-let apps = []; // the apps, for an endpoint's allow-list
+let apps = []; // the apps, for the allow-lists of entries, inboxes and downloaders
 let kinds = {}; // GET /api/kinds by name: the settings each requires
 // bonjourFound is what Bonjour found last, by kind (a printer's: every
 // IPP printer; a CUPS server (sink)'s: the shared queues), that the
@@ -572,7 +573,7 @@ function formatsField(n, label, what) {
   return field(label, fmts, what);
 }
 
-// entryFields are what an endpoint or an S3 trigger takes and sends on:
+// entryFields are what an uploader or an S3 trigger takes and sends on:
 // documents or data, the formats, and whether a document goes on as the
 // .bdf made of it or as received. A CUPS server has none: what computers
 // print is a document, made .bdf.
@@ -927,7 +928,7 @@ function viewSidebar() {
   parts.push(sec);
   aside.replaceChildren(...parts);
   if (n.kind === "sink") keptSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
-  if (n.kind === "export") listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
+  if (n.kind === "download") listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
 }
 
 // tab is the sidebar's tab of a saved node: its settings, or its usage
@@ -1209,8 +1210,7 @@ function nameError(v, self) {
 function renameNote(n, to) {
   const at = [];
   if (n.kind === "cups") at.push(_("/printers/{name} on its port", { name: to }), `/ipp/print/${to}`);
-  if (n.in) at.push(`/in/${to}`);
-  if (n.kind === "export") at.push(`/out/${to}`);
+  if (n.api) at.push(`/api/${n.kind}/${to}`);
   const where = at.length && _("It is reached at {where} from then on: computers and applications set up with {was} must be set up again.", { where: at.join(", "), was: n.name });
   return sentences(_("Saving renames it to {to}.", { to }), where, _("The nodes that send to it follow; the jobs that reached it keep {was}.", { was: n.name }));
 }
@@ -1260,9 +1260,10 @@ function nextPort(self) {
   return p;
 }
 
-// portField is the port of an entry of its own (an endpoint's REST, a
-// CUPS server's IPP): a node being added gets the first port free from
-// 6310; none where this process has no ports (serverless).
+// portField is the port of a CUPS server of its own (its IPP; what
+// applications call is at the API, on the manager's port): a node being
+// added gets the first port free from 6310; none where this process has
+// no ports (serverless).
 function portField(n, what, empty) {
   const none = me && me.ports === false;
   const self = draft ? "" : n.name;
@@ -1278,12 +1279,13 @@ function portField(n, what, empty) {
   return f;
 }
 
-// appsField is the apps an entry (an endpoint, a CUPS server) takes with
-// their own credentials.
+// appsField is the apps a node lists, which use it with their own
+// credentials: an entry's (an uploader, a CUPS server) send to it, an
+// inbox's work it.
 function appsField(n, what) {
   const boxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
   for (const a of apps) {
-    if (a.public) continue; // a frontend reads exports, as a person
+    if (a.public) continue; // a frontend uses the API as a person
     const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
     l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "app", value: a.id, checked: (n.apps || []).includes(a.id) }), a.id + (a.title ? " · " + a.title : ""));
     boxes.append(l);
@@ -1310,19 +1312,18 @@ function settingsForm(n) {
   }
   // nothing fails at a branch: it sends on, or drops; an assert's
   // failures are with its checks
-  if (kind !== "export" && kind !== "branch" && kind !== "assert") form.append(field(_("On error"), picker("on_error", n.on_error || [], n.name), _("Where the job goes, with what reached this node, when its send or step fails for good (a notify node); none chosen: the manager's default, or the job stops here.")));
+  if (kind !== "download" && kind !== "branch" && kind !== "assert") form.append(field(_("On error"), picker("on_error", n.on_error || [], n.name), _("Where the job goes, with what reached this node, when its send or step fails for good (a notify node); none chosen: the manager's default, or the job stops here.")));
   if (ADAPTER_SETTINGS[kind]) {
     const box = el("textarea", undefined, { id: "f-settings", className: "textarea textarea-sm w-full font-mono", rows: 8, value: JSON.stringify(settingsOf(n, kind), null, 2) });
     form.append(field(_("Settings (JSON)"), box, sentences(ADAPTER_SETTINGS[kind], _("Credentials are names: the secret is the server's DOCFLOW_CRED_<name>, or a file. Text, recipients, paths and headers may use {{meta.<key>}}."))));
   }
   const later = (s) => sentences(s, _("None yet is fine: connect it when the nodes after it are there (a job that reaches it meanwhile gets an error)."));
   switch (kind) {
-    case "endpoint": {
+    case "upload": {
       form.append(field(_("Forwards to"), picker("to", n.to || [], n.name), later(_("Every node chosen gets the job. The port on the canvas adds one too."))));
       entryFields(form, n);
       form.append(metaField(n));
-      form.append(portField(n, _("Applications may POST to http://<this host>:<port>/ as well as to /in/{name}. Empty: /in/<name> on the manager's own port only.", { name: n.name || "<name>" }), _("empty: the manager's own port only")));
-      form.append(appsField(n, _("Apps send here with their token (POST /oauth/token), within their scopes; the endpoint's own key works as well.")));
+      form.append(appsField(n, _("Apps send here with their token (POST /oauth/token), within their scopes; the uploader's own key works as well.")));
       break;
     }
     case "s3-trigger":
@@ -1351,7 +1352,7 @@ function settingsForm(n) {
     case "sink":
       form.append(field(_("Latest"), input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), _("How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show in Usage and on the canvas.")));
       break;
-    case "export": {
+    case "download": {
       form.append(field(_("Owner's key"), input("f-by", n.by || "", { placeholder: _("customer_id (a metadata key); empty: a person reads what they could see of the job"), autocomplete: "off" }), _("The metadata key whose value says whose a document is: a person reads the documents whose value is them, under the subject below. A backend reads every one.")));
       form.append(field(_("Subject"), selectInput("f-subject", Object.entries(SUBJECTS), n.subject || "email"), _("What of a person is compared with the owner's value.")));
       form.append(field(_("Fields"), input("f-fields", (n.fields || []).join(", "), { placeholder: _("invoice_no, doc_type (metadata keys, comma-separated)") }), _("Metadata copied into the entries listed, for the reader to show or pick by.")));
@@ -1364,7 +1365,7 @@ function settingsForm(n) {
         appBoxes.append(l);
       }
       if (!appBoxes.childElementCount) appBoxes.append(el("a", _("No backend apps yet: register one"), { className: "link text-sm", href: "/admin/apps" }));
-      form.append(field(_("Apps allowed"), appBoxes, _("Backends that read every entry with their token (the scope export). A frontend (a public client) reads as the person using it, with a token of theirs: it needs no listing here.")));
+      form.append(field(_("Apps allowed"), appBoxes, _("Backends that read every entry with their token (the scope download). A frontend (a public client) reads as the person using it, with a token of theirs: it needs no listing here.")));
       break;
     }
     case "queue":
@@ -1425,11 +1426,12 @@ function settingsForm(n) {
       form.append(field(_("Policy"), selectInput("f-policy", [["round-robin", _("in turn (round-robin)")], ["failover", _("the first member (failover)")]], n.policy || "round-robin"), _("A printer that does not take the job is skipped for the next member.")));
       break;
     case "inbox":
-      form.append(field(_("A person releases to"), picker("to", n.to || [], n.name), _("The nodes a person may release to; none chosen: any node. An HTTP (pull) node chosen is not one to release to: it lists each job while the inbox holds it, for applications to fetch.")));
+      form.append(field(_("Releases to"), picker("to", n.to || [], n.name), _("The nodes an item may be released to; none chosen: any node, which only the role topology releases to. A downloader chosen is not one to release to: it lists each job while the inbox holds it, for applications to fetch.")));
       form.append(field(_("Keep"), input("f-keep", n.keep || "", { placeholder: "14d" }), _("How long released and discarded items stay shown.")));
+      form.append(appsField(n, _("Apps that work the inbox with their token (the scope inbox): they list what it holds, see its pages, release and discard. The people who work it are its scope's, below.")));
       break;
     case "archive":
-      form.append(field(_("Forwards to"), picker("to", n.to || [], n.name), _("Once written, the job goes on to every node chosen: an HTTP (pull) node after the archive lists the document for applications and people to fetch. The port on the canvas adds one too.")));
+      form.append(field(_("Forwards to"), picker("to", n.to || [], n.name), _("Once written, the job goes on to every node chosen: a downloader after the archive lists the document for applications and people to fetch. The port on the canvas adds one too.")));
       form.append(field(_("Store"), input("f-store", n.store || "", { placeholder: _("s3://bucket?region=… or bbolt:path"), required: true }), _("A documents URL: bbolt, s3, r2 or gcs. Each job's .bdf and record are written once; the manager never changes or deletes them.")));
       form.append(field(_("Collection"), input("f-collection", n.collection || "", { placeholder: "archive-" + (n.name || "<name>") })));
       break;
@@ -1471,9 +1473,10 @@ function settingsForm(n) {
       break;
     }
   }
-  const scopes = kind === "export"
-    ? [["shared", _("shared: anyone signed in may read their own")], ["group", _("group: its members may read their own")], ["personal", _("personal: one person")]]
-    : [["shared", _("shared: anyone signed in may send")], ["group", _("group: its members send and see the jobs")], ["personal", _("personal: one person")]];
+  const scopes = {
+    download: [["shared", _("shared: anyone signed in may read their own")], ["group", _("group: its members may read their own")], ["personal", _("personal: one person")]],
+    inbox: [["shared", _("shared: anyone signed in may send; the role topology releases")], ["group", _("group: its members send, see the jobs, release and discard")], ["personal", _("personal: one person sends and releases")]],
+  }[kind] || [["shared", _("shared: anyone signed in may send")], ["group", _("group: its members send and see the jobs")], ["personal", _("personal: one person")]];
   form.append(field(_("Scope"), selectInput("f-scope", scopes, n.scope || "shared")));
   form.append(field(_("Owner"), input("f-owner", n.owner || "", { placeholder: _("a group (a value of the groups claim), or a person's email") })));
   const actions = el("div", undefined, { className: "mt-2 flex flex-wrap gap-2" });
@@ -1517,10 +1520,9 @@ function formOf(n, form, lenient) {
     body.meta = metaOf(form);
   };
   switch (n.kind) {
-    case "endpoint":
+    case "upload":
       entry();
       body.apps = [...form.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
-      if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
     case "s3-trigger":
       entry();
@@ -1558,7 +1560,7 @@ function formOf(n, form, lenient) {
     case "sink":
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));
       break;
-    case "export":
+    case "download":
       if (dur("f-by")) body.by = dur("f-by");
       body.subject = f("f-subject").value;
       body.fields = names(f("f-fields").value);
@@ -1589,6 +1591,7 @@ function formOf(n, form, lenient) {
     case "inbox":
       body.to = picked(form, "to");
       body.keep = dur("f-keep");
+      body.apps = [...form.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       break;
     case "archive":
       body.to = picked(form, "to");
@@ -1683,7 +1686,7 @@ async function save(ev) {
       await api("PUT", "/api/layout", { positions: { [name]: d.pos } });
     }
     status(_("{name} saved", { name }));
-    if (res.key) showKey(name, res.key);
+    if (res.key) showKey(name, res.kind, res.key);
     await load();
     // a change of settings may leave an edge carrying what the node
     // after it does not take: said here, and drawn dashed
@@ -1711,25 +1714,42 @@ async function remove(name) {
 }
 
 // usagePanel is how a saved node is used: how computers, applications
-// and devices reach it from outside (a CUPS server, an endpoint, an S3
-// trigger, an export, a display), and what is at it now.
+// and devices reach it from outside (a CUPS server, an uploader, an S3
+// trigger, an inbox, a downloader, a display), and what is at it now.
 function usagePanel(n, box) {
   switch (n.kind) {
     case "cups":
       box.append(printerSetup(n));
       break;
-    case "endpoint":
+    case "upload":
     case "s3-trigger":
       entryUsage(n, box);
       break;
-    case "export": {
+    case "inbox": {
+      const sec = section(_("Work it"));
+      sec.append(hint(_("People decide on the Inboxes page; applications through the API: what the inbox holds (the items, oldest first, and the nodes it releases to), an item's thumbnail, pages and document, and the decision. An app the inbox lists sends its token (POST /oauth/token, the scope inbox); a frontend the token it got for a person who works the inbox; the pages use their session.")));
+      const base = `${location.origin}/api/inbox/${n.name}`;
+      sec.append(pre(`GET  ${base}
+GET  ${base}/<job>
+GET  ${base}/<job>/thumbnail?size=256
+GET  ${base}/<job>/pages/<n>.png?w=800
+GET  ${base}/<job>/document
+POST ${base}/<job>/release   {"to": [${releaseTo(n).map((x) => JSON.stringify(x)).join(", ")}], "worker": "…"}
+POST ${base}/<job>/discard   {"worker": "…"}`));
+      const allowed = n.apps || [];
+      sec.append(hint(allowed.length ? _("Apps that work it with their own token: {apps}.", { apps: allowed.join(", ") }) : _("No app works it yet (Settings → Apps allowed).")));
+      box.append(sec);
+      break;
+    }
+    case "download": {
       const sec = section(_("Readers"));
-      sec.append(hint(_("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, its record (the archive's, or of an inbox's the job), and the document itself, read from the inbox or the archive before it. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session.")));
-      sec.append(pre(`GET ${location.origin}/out/${n.name}
-GET ${location.origin}/out/${n.name}/<job>
-GET ${location.origin}/out/${n.name}/<job>/record
-GET ${location.origin}/out/${n.name}/<job>/document
-GET ${location.origin}/out/${n.name}/<job>/pages/<n>.png?w=`));
+      sec.append(hint(_("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, its record (the archive's, or of an inbox's the job), and the document itself, read from the inbox or the archive before it. A backend sends its token (POST /oauth/token, client credentials, the scope download); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session.")));
+      const base = `${location.origin}/api/download/${n.name}`;
+      sec.append(pre(`GET ${base}
+GET ${base}/<job>
+GET ${base}/<job>/record
+GET ${base}/<job>/document
+GET ${base}/<job>/pages/<n>.png?w=`));
       box.append(sec);
       listedSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
       break;
@@ -1752,16 +1772,16 @@ GET ${location.origin}/out/${n.name}/<job>/pages/<n>.png?w=`));
       break;
     }
     default:
-      box.append(hint(_("Other nodes send to it along the edges: it is not reached from outside. Computers print to a CUPS server (source); applications post to an endpoint, and a bucket's events to an S3 trigger.")));
+      box.append(hint(_("Other nodes send to it along the edges: it is not reached from outside. Computers print to a CUPS server (source); applications post to an uploader, and a bucket's events to an S3 trigger.")));
   }
   // the first section has no rule above it, under the tabs
   box.firstElementChild?.classList.remove("mt-3", "border-t", "pt-3");
   const row = el("div", undefined, { className: "mt-3 flex flex-wrap gap-3 border-t border-base-300 pt-3 text-sm" });
-  if (n.kind !== "export") row.append(el("a", _("Jobs sent here"), { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
-  if (n.kind === "inbox") row.append(el("a", _("{n} held: open the inbox", { n: n.held || 0 }), { className: "link", href: "/admin/inboxes" }));
+  if (n.kind !== "download") row.append(el("a", _("Jobs sent here"), { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
+  if (n.kind === "inbox") row.append(el("a", _("{n} held: open the inbox", { n: n.held || 0 }), { className: "link", href: "/inboxes#" + encodeURIComponent(n.name) }));
   if (n.pending) row.append(el("a", n.pending === 1 ? _("{n} delivery waiting", { n: n.pending }) : _("{n} deliveries waiting", { n: n.pending }), { className: "link", href: "/admin/deliveries" }));
-  // what an entry or an export publishes, for an application's developer
-  if (n.in || n.kind === "export") row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
+  // what a node publishes at the API, for an application's developer
+  if (n.api) row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
   box.append(row);
   if (n.kind === "sink") keptSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
   if (n.kind === "printer" && n.preview) {
@@ -1811,23 +1831,29 @@ function printerSetup(n) {
   return sec;
 }
 
-// entryUsage is how applications send to an endpoint, and how a bucket's
+// releaseTo are the nodes an inbox releases to: its to, but the
+// downloaders, which list what it holds.
+function releaseTo(n) {
+  return (n.to || []).filter((x) => (topo.find((t) => t.name === x) || {}).kind !== "download");
+}
+
+// entryUsage is how applications send to an uploader, and how a bucket's
 // events reach an S3 trigger: the request, and the node's key.
 function entryUsage(n, box) {
-  const sec = section(n.kind === "endpoint" ? _("Send to it") : _("Point the bucket's events at it"));
-  if (n.kind === "endpoint") {
+  const sec = section(n.kind === "upload" ? _("Send to it") : _("Point the bucket's events at it"));
+  if (n.kind === "upload") {
     sec.append(hint(n.accept === "data" ? _("Applications POST the data (JSON, YAML, CSV, an Excel workbook or a Parquet file) as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata.") : _("Applications POST a document as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata.")));
-    sec.append(pre(`curl -X POST -H "Authorization: Bearer <key>" --data-binary @${n.accept === "data" ? "orders.json" : "document.pdf"} "${location.origin}${n.in}?name=document"` + (n.port ? "\n\n" + _("or, on its own port: {request}", { request: `POST http://${location.hostname}:${n.port}/` }) : "")));
+    sec.append(pre(`curl -X POST -H "Authorization: Bearer <key>" --data-binary @${n.accept === "data" ? "orders.json" : "document.pdf"} "${location.origin}${n.api}?name=document"`));
     const allowed = n.apps || [];
     sec.append(hint(allowed.length ? _("Apps that send with their own token (POST /oauth/token): {apps}.", { apps: allowed.join(", ") }) : _("No app sends with its own token yet: only the key (Settings → Apps allowed).")));
   } else {
     sec.append(hint(_("It does not listen to the bucket: an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference here with the node's key. The body is {body}, an S3 notification (Records, one object), or the event EventBridge sends (detail). The node reads the object itself; the job goes on with s3.bucket and s3.key in its metadata.", { body: '{"bucket": …, "key": …}' })));
     sec.append(pre(`curl -X POST -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \\
-  --data '{"bucket": "${bucketOf(n.url) || "<bucket>"}", "key": "${n.path ? n.path + "/" : ""}<key>"}' "${location.origin}${n.in}"`));
+  --data '{"bucket": "${bucketOf(n.url) || "<bucket>"}", "key": "${n.path ? n.path + "/" : ""}<key>"}' "${location.origin}${n.api}"`));
   }
   const key = section(_("Key"));
   key.append(hint(_("Shown once, when the node was made or the key rotated; the manager keeps only its hash. Rotating it makes a new one and the old one stops working.")));
-  key.append(button(_("Rotate key"), async () => showKey(n.name, (await api("POST", `/api/nodes/${n.name}/key`)).key), "btn btn-sm btn-outline w-fit"));
+  key.append(button(_("Rotate key"), async () => showKey(n.name, n.kind, (await api("POST", `/api/nodes/${n.name}/key`)).key), "btn btn-sm btn-outline w-fit"));
   box.append(sec, key);
 }
 
@@ -1865,7 +1891,7 @@ async function previewSection(n, box) {
 }
 
 async function templatesSection(n, box) {
-  box.append(hint(_("This node fills one of them (the one chosen above, or the one the metadata names) with the data that reaches it from a data endpoint. A compiled template (.bdft), or Excel, Word, PowerPoint, a PDF form, pdfme or text.")));
+  box.append(hint(_("This node fills one of them (the one chosen above, or the one the metadata names) with the data that reaches it from a data uploader. A compiled template (.bdft), or Excel, Word, PowerPoint, a PDF form, pdfme or text.")));
   const ts = await api("GET", `/api/nodes/${n.name}/templates`);
   const table = el("table", undefined, { className: "table table-xs" });
   const tbody = el("tbody");
@@ -1939,10 +1965,10 @@ async function devicesSection(n, box) {
   box.append(add);
 }
 
-function showKey(name, key) {
+function showKey(name, kind, key) {
   $("key-name").textContent = name;
   $("key-value").textContent = key;
-  $("key-usage").textContent = `curl -X POST -H "Authorization: Bearer ${key}" --data-binary @document.pdf "${location.origin}/in/${name}?name=document"`;
+  $("key-usage").textContent = `curl -X POST -H "Authorization: Bearer ${key}" --data-binary @document.pdf "${location.origin}/api/${kind}/${name}?name=document"`;
   $("key-copy").textContent = _("Copy");
   $("key-modal").showModal();
 }

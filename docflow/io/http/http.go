@@ -1,7 +1,6 @@
 // Package http is the HTTP output of docflow: the kind http, shown as
 // HTTP (push), sends what reaches the node to a web service in a request
-// (the export node, HTTP (pull), is where applications fetch documents
-// instead). A program that imports the package has the kind;
+// (a downloader is where applications fetch documents instead). A program that imports the package has the kind;
 // docflow/io/notify posts its webhooks with Do.
 //
 // The node's URL expands {{meta.<key>}} (each value URL-escaped), its
@@ -18,8 +17,8 @@
 //     object in the part meta, then the document in the part file, with
 //     its name and type (2026-10-23).
 //
-// Another docflow's endpoint (POST /in/<node>, with its key or an app's
-// token as the credential) takes either as its sender's: .bdf goes to
+// Another docflow's uploader (POST /api/upload/<node>, with its key or an
+// app's token as the credential) takes either as its sender's: .bdf goes to
 // another site as it is, with its name and metadata.
 //
 // Every request has an Idempotency-Key, the delivery's id, the same on

@@ -6,7 +6,7 @@ The Jobs page is everyone's: a form that prints a document, and the jobs you may
 
 Choose a node, a file and, if you like, a name for the job (the file's name otherwise), and press Print. The nodes listed are those you may send to: the shared ones, your groups' and your own ([Scopes](roles.md#scopes)). The job is received at that node and flows from it along the edges the administrator drew; where it went and what became of it is in the list below the form, and on the [Topology](topology.md#view) page.
 
-What a node takes depends on its kind ([Kinds of payload](flow.md#kinds)). A printer, a display, a queue or an inbox takes a document — PDF, Office documents (Word, Excel, PowerPoint), images and `.bdf`, among the formats the converter reads — and it is made into a `.bdf` document as it is received. A template node takes data (JSON, YAML, CSV, an Excel workbook) and fills a form with it; a convert node takes a file as it is; an endpoint takes what its settings say. A file of a format the node does not take is refused, and the page says so.
+What a node takes depends on its kind ([Kinds of payload](flow.md#kinds)). A printer, a display, a queue or an inbox takes a document — PDF, Office documents (Word, Excel, PowerPoint), images and `.bdf`, among the formats the converter reads — and it is made into a `.bdf` document as it is received. A template node takes data (JSON, YAML, CSV, an Excel workbook) and fills a form with it; a convert node takes a file as it is; an uploader takes what its settings say. A file of a format the node does not take is refused, and the page says so.
 
 ## Your jobs {#list}
 
@@ -17,7 +17,7 @@ The list shows the jobs you sent and the jobs sent to your groups' nodes ([Who s
 | No. | the job's number, `#12`: the same on every page, in the audit log and in the archives |
 | Name | the job's name; hovering shows what was received (its kind and format) and the job's metadata |
 | Sent to | the node the sender sent it to |
-| Sent by | who sent it, as the manager verified: the person signed in, an app, a token, an endpoint, or anonymous. When the sender named someone else (`?user=`, IPP's requesting-user-name), the name is shown after it as "(as …)": claimed, never checked |
+| Sent by | who sent it, as the manager verified: the person signed in, an app, a token, an uploader, or anonymous. When the sender named someone else (`?user=`, IPP's requesting-user-name), the name is shown after it as "(as …)": claimed, never checked |
 | Group | the group whose members see the job: the node's owner group when the job was sent |
 | Received | when |
 | State | see [States](#states) |
@@ -45,12 +45,12 @@ A leg's state is what the node did with the job:
 
 | Leg | Nodes | |
 |---|---|---|
-| `routed` | queue, class, filter, assert, branch, endpoint, CUPS server | sent on along the edges; of a branch, the leg names the arm |
+| `routed` | queue, class, filter, assert, branch, uploader, CUPS server | sent on along the edges; of a branch, the leg names the arm |
 | `shown` | display | a slip on the devices; `canceled` when the job was |
 | `held`, `released`, `discarded` | inbox | held; sent on by a person; discarded by a person, or by a cancellation |
 | `pending`, `done`, `failed`, `canceled` | printer, archive, template, convert | a delivery: waiting or being sent; done; given up; withdrawn by a cancellation |
 | `kept` | sink | among the latest the sink keeps |
-| `listed` | HTTP (pull) | listed for its owner, who the leg names ([HTTP (pull)](exports.md)) |
+| `listed` | downloader | listed for its owner, who the leg names ([Downloaders](downloads.md)) |
 | `dropped` | filter, branch | no rule or case fit, and there is no otherwise or default |
 | `refused` | assert | the job failed a check, and the error says which ([Checks](flow.md#checks)); right after the node the job was sent to, its sender was refused |
 | `error` | any | the node could not take the job, and the error says why: a kind of payload it does not take, a node that is gone |

@@ -1,6 +1,6 @@
 # Where documents come in
 
-A job enters the network at an entry: the form on the Jobs page, an endpoint an application POSTs to, a CUPS server node computers print to, an S3 trigger a bucket's events reach, or the API. Who may send where is [Scopes of nodes](roles.md#scopes).
+A job enters the network at an entry: the form on the Jobs page, an uploader an application POSTs to, a CUPS server node computers print to, an S3 trigger a bucket's events reach, or the API. Who may send where is [Scopes of nodes](roles.md#scopes).
 
 ## From the pages {#pages}
 
@@ -12,16 +12,16 @@ IPP enters at CUPS server nodes alone ([CUPS server nodes](#cups)): a computer a
 
 Who may print over IPP is the operator's `submit_tokens`: with any set, the client gives a token's name and secret as Basic authentication (an app gives its id and secret the same way); with none, anyone who reaches the manager may send. The requesting-user-name the client gives is shown as "(as …)", never checked.
 
-## Endpoints {#endpoints}
+## Uploaders {#uploaders}
 
-An endpoint is a REST entry for an application: a business system, a WMS. It is a node on the topology ([Endpoint](nodes.md#endpoint)); when it is saved for the first time its key is shown once, and Rotate key in its sidebar makes a new one and shows it once (the old one stops working). The manager keeps only the key's hash.
+An uploader is a REST entry for an application: a business system, a WMS. It is a node on the topology ([Uploader](nodes.md#upload)); when it is saved for the first time its key is shown once, and Rotate key in its sidebar makes a new one and shows it once (the old one stops working). The manager keeps only the key's hash.
 
 The application sends with the key as a bearer token:
 
 ```sh
 curl -X POST -H "Authorization: Bearer bdfk_…" \
      --data-binary @statement.pdf \
-     "https://<host>/in/erp?name=statement&meta.dept=sales"
+     "https://<host>/api/upload/erp?name=statement&meta.dept=sales"
 ```
 
 or, as a form:
@@ -30,20 +30,20 @@ or, as a form:
 curl -H "Authorization: Bearer bdfk_…" \
      -F 'meta={"dept": "sales"};type=application/json' \
      -F file=@statement.pdf \
-     https://<host>/in/erp
+     https://<host>/api/upload/erp
 ```
 
-- The body is the document, or the data for an endpoint with `accept: data`; the name (`?name=`) and the `Content-Type` tell its format when the content does not.
+- The body is the document, or the data for an uploader with `accept: data`; the name (`?name=`) and the `Content-Type` tell its format when the content does not.
 - `?name=` names the job; `?user=` names who sent it, shown as "(as …)".
 - `X-Meta-<Key>` headers and `?meta.<key>=` parameters are the job's metadata ([Metadata](flow.md#metadata)).
 - Or the body is `multipart/form-data`, told by its `Content-Type`: the document in the part `file`, whose name and `Content-Type` are the document's (`?name=` over the name), and the metadata as a JSON object in the part `meta`, over the headers' and the parameters'. An [HTTP (push)](nodes.md#http) node of another Docflow sends either.
 - Without `?name=`, a body as it is takes its name from `Content-Disposition` (`attachment; filename="statement.pdf"`).
-- The answer is the job (201), with its number and its legs so far. A document of a format the endpoint does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
-- An [assert](nodes.md#assert) right after the endpoint checks the metadata before the answer: a job that fails is refused (422) with `{"error": "…", "job": <number>, "failures": [{"node", "key", "error"}]}`, and kept, aborted, for its legs to show what failed. A CUPS server answers the same as IPP's `client-error-bad-request`, with what failed as the status message.
+- The answer is the job (201), with its number and its legs so far. A document of a format the uploader does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
+- An [assert](nodes.md#assert) right after the uploader checks the metadata before the answer: a job that fails is refused (422) with `{"error": "…", "job": <number>, "failures": [{"node", "key", "error"}]}`, and kept, aborted, for its legs to show what failed. A CUPS server answers the same as IPP's `client-error-bad-request`, with what failed as the status message.
 
-The endpoint's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — says what it takes: the media types, the schema of the data its templates fill, and the metadata the nodes after it look at ([OpenAPI](api.md#openapi)).
+The uploader's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — says what it takes: the media types, the schema of the data its templates fill, and the metadata the nodes after it look at ([OpenAPI](api.md#openapi)).
 
-With a `port`, a process listens on that port too, and every POST to it is to this endpoint: for an application that cannot set a path. A serverless deployment has no ports.
+Everything an application calls is the API of the manager's own server, by the kind of the node and its name: an uploader at `/api/upload/<name>`, an S3 trigger at `/api/s3-trigger/<name>`, an inbox at `/api/inbox/<name>` ([The inboxes' API](inboxes.md#api)), a downloader at `/api/download/<name>` ([Downloaders](downloads.md)). An uploader has no port of its own: only a CUPS server listens on one, for IPP.
 
 ## CUPS server nodes {#cups}
 
@@ -53,29 +53,30 @@ The printer answers as AirPrint and IPP Everywhere printers do (PDF preferred, A
 
 ## Apps {#apps}
 
-An app is an application that sends, or reads exports, with credentials of its own rather than an endpoint's key: the credentials are the app's, and the audit log and the jobs say which app sent. An administrator registers one on Admin → Apps: an id, a title, the group whose members see its jobs (optional), and its scopes:
+An app is an application that sends, works inboxes or reads downloaders with credentials of its own rather than an uploader's key: the credentials are the app's, and the audit log and the jobs say which app sent. An administrator registers one on Admin → Apps: an id, a title, the group whose members see its jobs (optional), and its scopes:
 
 | Scope | |
 |---|---|
 | `print` | send documents |
 | `print.template` | fill templates: send data |
 | `jobs.cancel` | cancel its own jobs |
-| `export` | read the exports that list it ([Backends](exports.md#backends)) |
+| `inbox` | work the inboxes that list it: list what they hold, their thumbnails and documents, release and discard ([The inboxes' API](inboxes.md#api)) |
+| `download` | read the downloaders that list it ([Backends](downloads.md#backends)) |
 | `tick` | call `POST /api/tick`: a scheduler |
 | `admin` | the API as an administrator: a script |
 
 The secret is shown once, when the app is added, and Rotate secret makes a new one (the old one stops working). Disable refuses the app's credentials and the tokens out; Delete removes it.
 
-The app takes a token at `POST /oauth/token`, the OAuth 2.0 client credentials grant, and sends with it as a bearer to the endpoints that list the app among their apps (Apps allowed, in the endpoint's sidebar), or prints over IPP with its id and secret as Basic authentication to the CUPS server nodes that list it the same way:
+The app takes a token at `POST /oauth/token`, the OAuth 2.0 client credentials grant, and sends with it as a bearer to the uploaders that list the app among their apps (Apps allowed, in the uploader's sidebar), or prints over IPP with its id and secret as Basic authentication to the CUPS server nodes that list it the same way:
 
 ```sh
 curl -u 'erp:<secret>' -d grant_type=client_credentials https://<host>/oauth/token
 # {"access_token": "…", "token_type": "Bearer", "expires_in": 600, "scope": "print"}
-curl -X POST -H "Authorization: Bearer <access_token>" --data-binary @statement.pdf "https://<host>/in/erp?name=statement"
+curl -X POST -H "Authorization: Bearer <access_token>" --data-binary @statement.pdf "https://<host>/api/upload/erp?name=statement"
 ```
 
 A token lasts ten minutes. An app sees its own jobs (`GET /api/my/jobs`) and cancels them with the scope `jobs.cancel`; its jobs are its group's when the node gives them none.
 
 ## Scripts {#scripts}
 
-A script sends with the operator's admin token, or a submit token's `name:secret`, as a bearer: `POST /api/destinations/<node>/jobs` with the document as the body takes `?name=`, `?user=` and the metadata as an endpoint does ([Jobs](api.md#jobs)).
+A script sends with the operator's admin token, or a submit token's `name:secret`, as a bearer: `POST /api/destinations/<node>/jobs` with the document as the body takes `?name=`, `?user=` and the metadata as an uploader does ([Jobs](api.md#jobs)).

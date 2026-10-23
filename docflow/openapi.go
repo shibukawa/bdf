@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"net/url"
 	"reflect"
 	"slices"
 	"sort"
@@ -21,21 +20,24 @@ import (
 	"github.com/shibukawa/bdf/form"
 )
 
-// The topology publishes endpoints: every keyed entry takes jobs at POST
-// /in/<name>, and every export is read at GET /out/<name>. OpenAPI
-// describes them as an OpenAPI 3.1 document, made of the topology as it
-// is, so that an application's developer generates a client of the
-// endpoints they use, or tries them. What each takes is the node's: the
-// formats an entry accepts, as media types; of an entry of data, the
-// JSON Schema of the templates its data reaches (form.Schema), and the
-// metadata keys the nodes after it look at (a filter's rules, an
-// assert's checks, a branch's cases, a template node's template_from, an
-// export's by and fields, the {{meta.<key>}} of an exit's settings), as
-// ?meta.<key>= parameters, those the asserts right after it check with
-// their constraints (and the refusal, 422); of an export, the fields its
-// entries carry. The jobs an app sent are followed at
-// /api/jobs/<id>. The document's version is a hash of what it describes:
-// it changes when the topology changes what it publishes.
+// The topology publishes endpoints, under the API by each node's kind
+// (NodePath): every keyed entry takes jobs at POST /api/<kind>/<name> (an
+// uploader's /api/upload/<name>), every inbox is worked at
+// /api/inbox/<name>, and every downloader is read at
+// /api/download/<name>. OpenAPI describes them as an OpenAPI 3.1
+// document, made of the topology as it is, so that an application's
+// developer generates a client of the endpoints they use, or tries them.
+// What each takes is the node's: the formats an entry accepts, as media
+// types; of an entry of data, the JSON Schema of the templates its data
+// reaches (form.Schema), and the metadata keys the nodes after it look at
+// (a filter's rules, an assert's checks, a branch's cases, a template
+// node's template_from, a downloader's by and fields, the {{meta.<key>}}
+// of an exit's settings), as ?meta.<key>= parameters, those the asserts
+// right after it check with their constraints (and the refusal, 422); of
+// an inbox, the nodes it releases to; of a downloader, the fields its
+// entries carry. The jobs an app sent are followed at /api/jobs/<id>. The
+// document's version is a hash of what it describes: it changes when the
+// topology changes what it publishes.
 
 // OpenAPIPath is where the manager serves the OpenAPI document.
 const OpenAPIPath = "/api/openapi.json"
@@ -45,10 +47,10 @@ type OpenAPIOptions struct {
 	// Server is the URL the manager is reached at ("https://docflow.example"),
 	// the document's server; "" leaves the paths relative.
 	Server string
-	// Viewer is who reads it: an app is shown the endpoints and the
-	// exports that list it, with the scopes to use them; a person the
-	// exports; nil, an administrator or a person with the role topology,
-	// every one.
+	// Viewer is who reads it: an app is shown the entries, the inboxes
+	// and the downloaders that list it, with the scopes to use them; a
+	// person the downloaders and the inboxes they work; nil, an
+	// administrator or a person with the role topology, every one.
 	Viewer *Viewer
 	// Nodes narrows it to these nodes; none, every one the viewer is
 	// shown. A node named that is not published to the viewer is
@@ -82,7 +84,7 @@ func (m *Manager) OpenAPI(ctx context.Context, o OpenAPIOptions) ([]byte, error)
 		want[name] = true
 	}
 	shown := map[string]bool{}
-	sends := false
+	sends, inboxes := false, false
 	for _, n := range nodes {
 		if len(want) > 0 && !want[n.Name] || !d.shows(&n) {
 			continue
@@ -91,8 +93,11 @@ func (m *Manager) OpenAPI(ctx context.Context, o OpenAPIOptions) ([]byte, error)
 		case keyed(n.Kind):
 			d.entry(&n)
 			sends = true
-		case n.Kind == KindExport:
-			d.export(&n)
+		case n.Kind == KindInbox:
+			d.inbox(&n)
+			inboxes = true
+		case n.Kind == KindDownload:
+			d.download(&n)
 		default:
 			continue
 		}
@@ -105,6 +110,9 @@ func (m *Manager) OpenAPI(ctx context.Context, o OpenAPIOptions) ([]byte, error)
 	}
 	if sends {
 		d.jobs()
+	}
+	if inboxes {
+		d.inboxes()
 	}
 	return d.write()
 }
@@ -122,24 +130,27 @@ type apiDoc struct {
 }
 
 // shows tells whether the viewer is shown a node's endpoints: an app
-// those of the endpoints it may send to and the exports it may read, a
-// person the exports.
+// those of the uploaders it may send to, the inboxes it works and the
+// downloaders it may read, a person the inboxes they work and the
+// downloaders.
 func (d *apiDoc) shows(n *Node) bool {
 	v := d.o.Viewer
 	if v == nil || v.Can(RoleTopology) {
 		return true
 	}
 	switch {
-	case n.Kind == KindEndpoint && v.Kind == PrincipalApp:
+	case n.Kind == KindUpload && v.Kind == PrincipalApp:
 		need := ScopePrint
 		if n.Accept == AcceptData {
 			need = ScopePrintTemplate
 		}
 		return slices.Contains(n.Apps, v.ID) && v.Has(need)
-	case n.Kind == KindExport && v.Kind == PrincipalApp:
-		return slices.Contains(n.Apps, v.ID) && v.Has(ScopeExport)
-	case n.Kind == KindExport:
+	case n.Kind == KindDownload && v.Kind == PrincipalApp:
+		return slices.Contains(n.Apps, v.ID) && v.Has(ScopeDownload)
+	case n.Kind == KindDownload:
 		return v.Kind == PrincipalUser
+	case n.Kind == KindInbox:
+		return v.mayWork(n) == nil
 	}
 	return false
 }
@@ -189,6 +200,7 @@ func (d *apiDoc) errorResponses(out map[string]any, statuses ...int) {
 		http.StatusUnauthorized:          "no credentials, or credentials not known",
 		http.StatusForbidden:             "credentials that may not do this",
 		http.StatusNotFound:              "not there, or not the reader's to read",
+		http.StatusConflict:              "what is no longer in a state to do it (an item released or discarded already)",
 		http.StatusRequestEntityTooLarge: "a document larger than the manager takes",
 		http.StatusUnsupportedMediaType:  "a format the entry does not take",
 	}
@@ -209,7 +221,7 @@ type apiError struct {
 
 // The entries.
 
-// entry describes POST /in/<name> of a keyed entry.
+// entry describes POST /api/<kind>/<name> of a keyed entry.
 func (d *apiDoc) entry(n *Node) {
 	k := kindNamed(n.Kind)
 	d.tag(n, "an entry: POST a document or data to it, and it flows on through the topology")
@@ -236,7 +248,7 @@ func (d *apiDoc) entry(n *Node) {
 		desc = append(desc, "The asserts right after it ("+d.names(gates)+") check the metadata first: a job that fails a check is refused (422) with what failed, and kept, aborted.")
 	}
 	security := []any{map[string]any{"key": []string{}}, map[string]any{"admin": []string{}}}
-	if n.Kind == KindEndpoint {
+	if n.Kind == KindUpload {
 		scope := ScopePrint
 		if n.Accept == AcceptData {
 			scope = ScopePrintTemplate
@@ -264,17 +276,7 @@ func (d *apiDoc) entry(n *Node) {
 		"responses":   responses,
 		"security":    security,
 	}
-	item := map[string]any{"post": op}
-	if n.Port != 0 && !d.m.o.NoPorts {
-		// the endpoint's own port takes the same request, at any path
-		if u, err := url.Parse(d.o.Server); err == nil && u.Hostname() != "" {
-			item["servers"] = []any{
-				map[string]any{"url": d.o.Server},
-				map[string]any{"url": "http://" + u.Hostname() + ":" + strconv.Itoa(n.Port), "description": n.Name + "'s own port"},
-			}
-		}
-	}
-	d.paths[InPath+"/"+n.Name] = item
+	d.paths[NodePath(n.Kind, n.Name)] = map[string]any{"post": op}
 }
 
 // names lists nodes: a, b and c (kind).
@@ -551,12 +553,12 @@ func (d *apiDoc) metaParams(entry *Node) []any {
 				}
 			}
 		}
-		if n.Kind == KindExport {
+		if n.Kind == KindDownload {
 			if n.By != "" {
-				use(n.By, "says whose the document is at the export "+n.Name)
+				use(n.By, "says whose the document is at the downloader "+n.Name)
 			}
 			for _, f := range n.Fields {
-				use(f, "is listed with the document at the export "+n.Name)
+				use(f, "is listed with the document at the downloader "+n.Name)
 			}
 		}
 		for _, s := range n.expanded() {
@@ -640,30 +642,110 @@ func (n *Node) expanded() []string {
 	return out
 }
 
-// The exports.
+// The inboxes.
 
-// export describes GET /out/<name> and its entries.
-func (d *apiDoc) export(n *Node) {
-	d.tag(n, "an export (HTTP (pull)): the documents an inbox holds or an archive wrote, for their owners and the apps it lists")
-	entry := d.goSchema(reflect.TypeFor[ExportEntry]())
+// inboxSecurity is who works an inbox: an app it lists, a person of its
+// own, or the administrator.
+var inboxSecurity = []any{map[string]any{"app": []string{ScopeInbox}}, map[string]any{"person": []string{ScopeInbox}}, map[string]any{"admin": []string{}}}
+
+// inbox describes /api/inbox/<name>: what it holds, and their release or
+// discard.
+func (d *apiDoc) inbox(n *Node) {
+	var release []string
+	for _, to := range n.To {
+		if x := d.nodes[to]; x == nil || !n.stockedTo(x) {
+			release = append(release, to)
+		}
+	}
+	what := "an inbox: it holds the jobs that reach it until someone releases or discards them"
+	if len(release) > 0 {
+		what += "; it releases to " + d.names(release)
+	}
+	d.tag(n, what)
+	job := map[string]any{"name": "job", "in": "path", "required": true, "description": "The job's number.", "schema": map[string]any{"type": "integer", "format": "int32"}}
+	item := ref(d.goSchema(reflect.TypeFor[Item]()))
+	png := map[string]any{"description": "the image", "content": map[string]any{"image/png": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}}
+	op := func(id, summary, desc string, params []any, ok map[string]any, statuses ...int) map[string]any {
+		responses := map[string]any{"200": ok}
+		d.errorResponses(responses, append([]int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, statuses...)...)
+		o := map[string]any{"operationId": d.opID(id, n.Name), "tags": []string{n.Name}, "summary": summary, "description": desc,
+			"responses": responses, "security": inboxSecurity}
+		if len(params) > 0 {
+			o["parameters"] = params
+		}
+		return o
+	}
+	base := NodePath(KindInbox, n.Name)
+	d.paths[base] = map[string]any{"get": op("get_inbox", "What "+or(n.Title, n.Name)+" holds",
+		"The items held, oldest first, the ones released or discarded still shown, latest first, and the nodes it releases to (to). The ETag is of the answer: with If-None-Match, 304 while nothing changed.",
+		nil, jsonBody("the inbox", ref(d.goSchema(reflect.TypeFor[InboxView]()))))}
+	d.paths[base+"/{job}"] = map[string]any{"get": op("get_item", "An item of "+or(n.Title, n.Name), "An item, by its job's number: who sent it, its pages, its state, and where it went.",
+		[]any{job}, jsonBody("the item", item))}
+	d.paths[base+"/{job}/thumbnail"] = map[string]any{"get": op("get_item_thumbnail", "The thumbnail of an item",
+		"Its first page, of a .bdf document: an item of a file as received or of data has none (404), only its document.",
+		[]any{job,
+			map[string]any{"name": "size", "in": "query", "description": "The longer side, in pixels (256 by default).", "schema": map[string]any{"type": "integer", "minimum": 32, "maximum": 1024}},
+			map[string]any{"name": "mode", "in": "query", "description": "fit, the whole page (the default); crop, the square at its top; auto, as the kind of document asks.", "schema": map[string]any{"type": "string", "enum": []string{"fit", "crop", "auto"}}},
+		}, png)}
+	d.paths[base+"/{job}/pages/{page}"] = map[string]any{"get": op("get_item_page", "A page of an item", "A page of its .bdf document, from 1 (…/pages/1.png too).",
+		[]any{job,
+			map[string]any{"name": "page", "in": "path", "required": true, "description": "The page's number, from 1.", "schema": map[string]any{"type": "string"}},
+			map[string]any{"name": "w", "in": "query", "description": "The width, in pixels (800 by default).", "schema": map[string]any{"type": "integer", "minimum": 64, "maximum": MaxPageWidth}},
+		}, png)}
+	d.paths[base+"/{job}/document"] = map[string]any{"get": op("get_item_document", "The document of an item", "The document the inbox holds, of its format; the download is in the audit log.",
+		[]any{job}, map[string]any{"description": "the document", "content": map[string]any{"*/*": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}})}
+	to := map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "The nodes to release to; none, every node the inbox releases to."}
+	if len(release) > 0 {
+		to["items"] = map[string]any{"type": "string", "enum": release}
+	}
+	workerProp := map[string]any{"type": "string", "description": "Who decided, written on the item and in the audit log; the reader's name by default."}
+	body := func(props map[string]any) map[string]any {
+		return map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": props, "additionalProperties": false}}}}
+	}
+	rel := op("release_item", "Release an item", "Sends the item on, as if the inbox had forwarded it. Only the role topology releases what an inbox that names no nodes holds; the others release to its nodes alone.",
+		[]any{job}, jsonBody("the item, released", item), http.StatusBadRequest, http.StatusConflict)
+	rel["requestBody"] = body(map[string]any{"to": to, "worker": workerProp})
+	d.paths[base+"/{job}/release"] = map[string]any{"post": rel}
+	dis := op("discard_item", "Discard an item", "Ends the item: the job goes no further from the inbox.",
+		[]any{job}, jsonBody("the item, discarded", item), http.StatusBadRequest, http.StatusConflict)
+	dis["requestBody"] = body(map[string]any{"worker": workerProp})
+	d.paths[base+"/{job}/discard"] = map[string]any{"post": dis}
+}
+
+// inboxes describes GET /api/inbox: the inboxes the reader works.
+func (d *apiDoc) inboxes() {
+	d.tags = append(d.tags, map[string]any{"name": "inboxes", "description": "The inboxes the reader works, and what each holds."})
+	responses := map[string]any{"200": jsonBody("the inboxes", map[string]any{"type": "array", "items": ref(d.goSchema(reflect.TypeFor[InboxSummary]()))})}
+	d.errorResponses(responses, http.StatusUnauthorized)
+	d.paths[APIPath+"/"+KindInbox] = map[string]any{"get": map[string]any{"operationId": d.opID("list_inboxes"), "tags": []string{"inboxes"}, "summary": "The inboxes",
+		"description": "The inboxes the reader works: an app's that list it, a person's of their groups or their own, every one for the role topology; with the nodes each releases to and how many items it holds.",
+		"responses":   responses, "security": inboxSecurity}}
+}
+
+// The downloaders.
+
+// download describes GET /api/download/<name> and its entries.
+func (d *apiDoc) download(n *Node) {
+	d.tag(n, "a downloader: the documents an inbox holds or an archive wrote, for their owners and the apps it lists")
+	entry := d.goSchema(reflect.TypeFor[DownloadEntry]())
 	if len(n.Fields) > 0 {
 		props := map[string]any{}
 		for _, f := range n.Fields {
 			props[f] = map[string]any{"type": "string"}
 		}
-		name := "ExportEntry." + n.Name
+		name := "DownloadEntry." + n.Name
 		d.schemas[name] = map[string]any{"allOf": []any{ref(entry), map[string]any{"properties": map[string]any{
 			"fields": map[string]any{"type": "object", "properties": props, "description": "The metadata " + n.Name + " lists with its entries."},
 		}}}}
 		entry = name
 	}
-	security := []any{map[string]any{"app": []string{ScopeExport}}, map[string]any{"person": []string{ScopeExport}}, map[string]any{"admin": []string{}}}
+	security := []any{map[string]any{"app": []string{ScopeDownload}}, map[string]any{"person": []string{ScopeDownload}}, map[string]any{"admin": []string{}}}
 	owner := "the person a reader reads as"
 	if n.By != "" {
 		owner = "the value of the metadata " + n.By
 	}
 	job := map[string]any{"name": "job", "in": "path", "required": true, "description": "The job's number.", "schema": map[string]any{"type": "integer", "format": "int32"}}
-	base := OutPath + "/" + n.Name
+	base := NodePath(KindDownload, n.Name)
 	get := func(id, summary, desc string, params []any, ok map[string]any) map[string]any {
 		responses := map[string]any{"200": ok}
 		d.errorResponses(responses, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound)
@@ -675,7 +757,7 @@ func (d *apiDoc) export(n *Node) {
 		return map[string]any{"get": op}
 	}
 	d.paths[base] = get("list", "List "+or(n.Title, n.Name),
-		"The entries the reader may read, newest first: every one's for an app the export lists, an administrator and an auditor, a person's own (whose owner is "+owner+").",
+		"The entries the reader may read, newest first: every one's for an app the downloader lists, an administrator and an auditor, a person's own (whose owner is "+owner+").",
 		[]any{
 			map[string]any{"name": "owner", "in": "query", "description": "One owner's entries alone.", "schema": map[string]any{"type": "string"}},
 			map[string]any{"name": "limit", "in": "query", "description": "How many entries at most.", "schema": map[string]any{"type": "integer", "minimum": 1}},
@@ -698,7 +780,7 @@ func (d *apiDoc) export(n *Node) {
 // The jobs an app sent.
 
 func (d *apiDoc) jobs() {
-	d.tags = append(d.tags, map[string]any{"name": "jobs", "description": "The jobs an app sent: their state and documents. A sender with an endpoint's key has none of these."})
+	d.tags = append(d.tags, map[string]any{"name": "jobs", "description": "The jobs an app sent: their state and documents. A sender with an entry's key has none of these."})
 	security := []any{map[string]any{"app": []string{}}, map[string]any{"admin": []string{}}}
 	job := map[string]any{"name": "id", "in": "path", "required": true, "description": "The job's id, or its number.", "schema": map[string]any{"type": "string"}}
 	jobRef := ref(d.goSchema(reflect.TypeFor[Job]()))
@@ -723,9 +805,10 @@ func (d *apiDoc) write() ([]byte, error) {
 		return strings.Compare(a.(map[string]any)["name"].(string), b.(map[string]any)["name"].(string))
 	})
 	scopes := map[string]any{
-		ScopePrint:         "send documents to the endpoints that list the app",
-		ScopePrintTemplate: "send data to the endpoints that list the app",
-		ScopeExport:        "read the exports that list the app",
+		ScopePrint:         "send documents to the uploaders that list the app",
+		ScopePrintTemplate: "send data to the uploaders that list the app",
+		ScopeDownload:      "read the downloaders that list the app",
+		ScopeInbox:         "work the inboxes that list the app: release and discard what they hold",
 		ScopeJobsCancel:    "cancel the app's jobs",
 	}
 	body := map[string]any{
@@ -735,7 +818,7 @@ func (d *apiDoc) write() ([]byte, error) {
 			"schemas": d.schemas,
 			"securitySchemes": map[string]any{
 				"key": map[string]any{"type": "http", "scheme": "bearer",
-					"description": "The entry's key (bdfk_…), shown once when the endpoint was made or its key rotated."},
+					"description": "The entry's key (bdfk_…), shown once when the node was made or its key rotated."},
 				"admin": map[string]any{"type": "http", "scheme": "bearer",
 					"description": "The operator's admin token."},
 				"app": map[string]any{"type": "oauth2",
@@ -744,7 +827,7 @@ func (d *apiDoc) write() ([]byte, error) {
 				"person": map[string]any{"type": "oauth2",
 					"description": "A person's token, which a frontend (a public client) gets with the authorization code grant and PKCE (S256).",
 					"flows": map[string]any{"authorizationCode": map[string]any{"authorizationUrl": d.url(OAuthAuthorizePath), "tokenUrl": d.url(OAuthTokenPath),
-						"scopes": map[string]any{ScopeExport: "read the exports, as the person"}}}},
+						"scopes": map[string]any{ScopeDownload: "read the downloaders, as the person", ScopeInbox: "work the inboxes of the person"}}}},
 			},
 		},
 	}

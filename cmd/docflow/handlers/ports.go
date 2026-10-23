@@ -18,9 +18,9 @@ import (
 )
 
 // ports are the listeners of the entry nodes that have a port of their
-// own (an endpoint's REST, a CUPS server's IPP): one per node, opened and
-// closed as the nodes change (the manager's OnChange, and every tick in
-// case a port could not be opened), and closed with the app. A serverless
+// own (a CUPS server's IPP): one per node, opened and closed as the nodes
+// change (the manager's OnChange, and every tick in case a port could not
+// be opened), and closed with the app. A serverless
 // deployment has none (docflow.Options.NoPorts). The CUPS servers that
 // say so (dnssd) are advertised with DNS-SD on the local links while
 // their ports are open.

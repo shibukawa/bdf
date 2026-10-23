@@ -23,7 +23,9 @@ component Shell(title: string, children: html): html {
 }
 
 // Account is the person signed in: an administrator has every role;
-// topology opens the admin pages, audit the audit log and every job. The
+// topology opens the admin pages, audit the audit log and every job;
+// inboxes tells one who works an inbox (the role topology, or a member
+// of an inbox's group). The
 // languages are the bar's switch, and here the page it comes back to.
 type Account {
   name: string
@@ -32,6 +34,7 @@ type Account {
   admin: bool
   topology: bool
   audit: bool
+  inboxes: bool
   languages: Language[]
   here: string
 }
@@ -69,6 +72,11 @@ component AppBar(title: string, account: Account, children: html?): html {
       <slot />
       <a href="/jobs" class="btn btn-sm btn-ghost">{t nav-jobs}</a>
       <a href="/topology" class="btn btn-sm btn-ghost">{t nav-topology}</a>
+      {if account.inboxes}
+        {if not account.topology}
+          <a href="/inboxes" class="btn btn-sm btn-ghost">{t tab-inboxes}</a>
+        {/if}
+      {/if}
       {if account.topology}
         <a href="/admin" class="btn btn-sm btn-ghost">{t nav-admin}</a>
       {/if}
@@ -183,7 +191,7 @@ component AdminNav(): html {
   <nav id="admin-nav" role="tablist" class="tabs tabs-box tabs-sm w-fit">
     <a role="tab" class="tab" href="/topology">{t nav-topology}</a>
     <a role="tab" class="tab" href="/admin/apps">{t tab-apps}</a>
-    <a role="tab" class="tab" href="/admin/inboxes">{t tab-inboxes}</a>
+    <a role="tab" class="tab" href="/inboxes">{t tab-inboxes}</a>
     <a role="tab" class="tab" href="/admin/jobs">{t nav-jobs}</a>
     <a role="tab" class="tab" href="/admin/deliveries">{t tab-deliveries}</a>
     <a role="tab" class="tab" href="/audit">{t nav-audit}</a>
@@ -346,7 +354,7 @@ export component Topology(account: Account): html {
                 <div tabindex="0" class="dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md">
                   <ul id="palette" class="menu w-full md:block md:columns-2 xl:columns-4">
                     <PaletteGroup title={t palette-source}>
-                      <PaletteKind kind="endpoint" name={t kind-endpoint}>{t kind-endpoint-note}</PaletteKind>
+                      <PaletteKind kind="upload" name={t kind-upload}>{t kind-upload-note}</PaletteKind>
                       <PaletteKind kind="cups" name={t kind-cups}>{t kind-cups-note}</PaletteKind>
                       <PaletteKind kind="s3-trigger" name={t kind-s3-trigger}>{t kind-s3-trigger-note}</PaletteKind>
                     </PaletteGroup>
@@ -371,7 +379,7 @@ export component Topology(account: Account): html {
                       <PaletteKind kind="cups-out" name={t kind-cups-out}>{t kind-cups-out-note}</PaletteKind>
                       <PaletteKind kind="archive" name={t kind-archive}>{t kind-archive-note}</PaletteKind>
                       <PaletteKind kind="sink" name={t kind-sink}>{t kind-sink-note}</PaletteKind>
-                      <PaletteKind kind="export" name={t kind-export}>{t kind-export-note}</PaletteKind>
+                      <PaletteKind kind="download" name={t kind-download}>{t kind-download-note}</PaletteKind>
                       <PaletteKind kind="http" name={t kind-http}>{t kind-http-note}</PaletteKind>
                       <PaletteKind kind="smtp" name={t kind-smtp}>{t kind-smtp-note}</PaletteKind>
                       <PaletteKind kind="s3" name={t kind-s3}>{t kind-s3-note}</PaletteKind>
@@ -443,7 +451,8 @@ export component Topology(account: Account): html {
 
 // Apps is the page of the applications that send with credentials of
 // their own (client credentials): registered here with their scopes, the
-// secret shown once; an endpoint lists the apps it takes.
+// secret shown once; an uploader, an inbox or a downloader lists the
+// apps it takes.
 export component Apps(account: Account): html {
   <AdminPage title={t apps-title} account={account}>
     <section class="card bg-base-100 shadow-sm">
@@ -487,21 +496,30 @@ export component Apps(account: Account): html {
   </AdminPage>
 }
 
-// Inboxes is the page of the items held in the inboxes: a person releases
-// them to a node, or discards them.
+// Inboxes is the page of the items held in the inboxes the person works
+// (every one for the role topology, whose nav it is in; their groups'
+// for the others): they release an item to a node, or discard it.
 export component Inboxes(account: Account): html {
-  <AdminPage title={t inboxes-title} account={account}>
-    <div class="flex flex-wrap items-center gap-3">
-      <h2 class="text-xl font-bold">{t tab-inboxes}</h2>
-      <label class="input input-sm w-64">
-        <span class="label">{t worker}</span>
-        <input id="worker" autocomplete="off" placeholder={t inboxes-worker-placeholder}>
-      </label>
-      <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
-    </div>
-    <section id="inboxes" class="grid gap-4"></section>
+  <Shell title={t inboxes-title}>
+    <AppBar title="BDF Docflow" account={account}></AppBar>
+    <main class="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6">
+      {if account.topology}
+        <AdminNav></AdminNav>
+      {/if}
+      <div class="flex flex-wrap items-center gap-3">
+        <h2 class="text-xl font-bold">{t tab-inboxes}</h2>
+        <label class="input input-sm w-64">
+          <span class="label">{t worker}</span>
+          <input id="worker" autocomplete="off" placeholder={t inboxes-worker-placeholder}>
+        </label>
+        <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
+      </div>
+      <p class="text-sm text-base-content/60">{t inboxes-note}</p>
+      <section id="inboxes" class="grid gap-4"></section>
+    </main>
+    <div id="toasts" class="toast toast-end z-50"></div>
     <script type="module" src="/public/inboxes.js"></script>
-  </AdminPage>
+  </Shell>
 }
 
 // AdminJobs is the administrator's page of every job: all of them, or

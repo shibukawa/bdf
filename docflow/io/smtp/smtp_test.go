@@ -27,7 +27,7 @@ func TestMail(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "mail", Kind: smtp.KindSMTP, URL: "smtp://" + srv.Addr, Credential: "mail-main", From: "Docflow <docflow@example.com>",
 		Recipients: []string{"{{meta.customer}}@example.com", "office@example.com"}, MailSubject: "Invoice {{meta.order}}", Text: "Dear {{meta.customer}},\nthe invoice is attached."},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"mail"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"mail"}})
 	doc := flowtest.Doc(t, 1)
 	j := e.Submit("in", "invoice.bdf", doc, map[string]any{"customer": "acme", "order": "A-1\r\nBcc: evil@example.com"})
 	e.Tick()
@@ -98,7 +98,7 @@ func TestMailFails(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "refused", Kind: smtp.KindSMTP, URL: "smtp://" + srv.Addr, From: "d@example.com", Recipients: []string{"nobody@example.com"}},
 		docflow.Node{Name: "nocred", Kind: smtp.KindSMTP, URL: "smtp://" + srv.Addr, Credential: "missing", From: "d@example.com", Recipients: []string{"a@example.com"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"refused", "nocred"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"refused", "nocred"}})
 	j := e.Submit("in", "x", flowtest.Doc(t, 1), nil)
 	e.Tick()
 	if d := e.Delivery(j, "refused"); d.State != docflow.DeliveryFailed || !strings.Contains(d.LastError, "550") {
