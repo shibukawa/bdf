@@ -3,6 +3,9 @@
 // edges as arrows, panned by dragging the background and zoomed by the
 // wheel or a pinch. In the editor, dragging a node moves it and dragging
 // from its right port onto another node connects them; a click selects.
+// A node being added (a draft) is drawn dashed until it is added, and a
+// click on it opens it again; a node changed and not saved is ringed in
+// the warning color, and a badge counts the required fields left empty.
 // The flows of the last minutes (jobs going from a node to the next) run
 // as dots along the edges.
 //
@@ -35,6 +38,7 @@ const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
 const BASE_FILL = "#ffffff";
 const BORDER = "#cbd5e1";
+const WARN_COLOR = "#d97706"; // not saved: settings changed, required fields empty
 const HEAD_H = 22; // the title bar
 const TAG_Y = 37; // the baseline of the [kind] line
 const DESC_Y = 52; // the baseline of the first line of the description
@@ -250,19 +254,24 @@ export function legend(box) {
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
-// and connect), onSelect(name or null), onMove(name, pos), onConnect(node,
-// toName, port: the port of a node with several), onReject(node, toName, why) (an edge dropped on a node that
-// cannot take it), onRemoveEdge(node, edge), draftLabel() and
-// draftNote() (the title, or the name, and the description typed for a
-// node being added).
+// and connect), onSelect(name or null), onSelectDraft(id), onMove(name,
+// pos), onConnect(node, toName, port: the port of a node with several),
+// onReject(node, toName, why) (an edge dropped on a node that cannot take
+// it), onRemoveEdge(node, edge), draftLabel(draft) and draftNote(draft)
+// (the title, or the name, and the description typed for a node being
+// added), and marksOf(name or a draft's id): what is not saved there,
+// {edited, missing} (settings changed, the number of required fields
+// left empty), or null.
 export function createCanvas(svg, opts = {}) {
-  const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onReject = () => {}, onRemoveEdge = () => {}, draftLabel = () => "", draftNote = () => "" } = opts;
+  const { editable = false, onSelect = () => {}, onSelectDraft = () => {}, onMove = () => {}, onConnect = () => {}, onReject = () => {}, onRemoveEdge = () => {}, draftLabel = () => "", draftNote = () => "", marksOf = () => null } = opts;
   let topo = []; // the nodes, as /api/topology lists them
   let layout = {}; // name -> {x, y}
   let live = null; // /api/topology/live
   let selected = null;
-  let draft = null; // {kind} of a node being added
-  let draftPos = null;
+  // the nodes being added, not put yet: {id, kind, pos}, the editor's
+  // (a draft moved here moves there)
+  let drafts = [];
+  let selectedDraft = null; // the id of the draft in the sidebar
   let view = { x: PAD, y: PAD, k: 1 };
   let world = null; // the <g> of the world
   let defs = null;
@@ -405,9 +414,10 @@ export function createCanvas(svg, opts = {}) {
   const snap = (v) => Math.round(v / GRID) * GRID;
 
   // freeSpot is a place for a new node near a point, clear of the
-  // others: to the right of them, then on the next row.
+  // others and of the drafts: to the right of them, then on the next row.
   function freeSpot(c) {
-    const taken = (p) => topo.some((n) => Math.abs(pos(n.name).x - p.x) < NODE_W + GRID && p.y < pos(n.name).y + heightOf(n) + GRID && p.y + NODE_H + GRID > pos(n.name).y);
+    const boxes = [...topo.map((n) => ({ ...pos(n.name), h: heightOf(n) })), ...drafts.map((d) => ({ ...d.pos, h: NODE_H }))];
+    const taken = (p) => boxes.some((q) => Math.abs(q.x - p.x) < NODE_W + GRID && p.y < q.y + q.h + GRID && p.y + NODE_H + GRID > q.y);
     const start = { x: snap(c.x - NODE_W / 2), y: snap(c.y - NODE_H / 2) };
     let p = { ...start };
     for (let i = 0; i < 64 && taken(p); i++) {
@@ -590,15 +600,26 @@ export function createCanvas(svg, opts = {}) {
       }
     }
     for (const n of topo) world.append(nodeBox(n, pos(n.name), n.name === selected));
-    if (draft && draftPos) {
-      const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
-      const kind = KINDS[draft.kind] || draft.kind;
-      const lines = draftNote() ? wrap(draftNote(), NODE_W - 20, MAX_LINES) : [];
-      box(g, draft.kind, draftLabel() || _("new {kind}", { kind: kind.toLowerCase() }), kind, _("not saved yet"), lines, heightOfLines(lines.length), 22, 30);
-      g.firstChild.setAttribute("stroke", "#4f46e5");
-      g.firstChild.setAttribute("stroke-width", "2");
-      g.firstChild.setAttribute("stroke-dasharray", "6 4");
-      g.addEventListener("pointerdown", (ev) => startDrag(ev, null));
+    // a draft is drawn dashed until it is added; a click on it opens it
+    // again in the sidebar, with what was typed for it
+    for (const d of drafts) {
+      const g = svgEl("g", { transform: `translate(${d.pos.x} ${d.pos.y})`, class: "cursor-grab", "data-draft": d.id });
+      const kind = KINDS[d.kind] || d.kind;
+      const note = draftNote(d);
+      const lines = note ? wrap(note, NODE_W - 20, MAX_LINES) : [];
+      const h = heightOfLines(lines.length);
+      if (d.id === selectedDraft) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
+      const first = g.childElementCount;
+      box(g, d.kind, draftLabel(d) || _("new {kind}", { kind: kind.toLowerCase() }), kind, _("not saved yet"), lines, h, 22, 30);
+      g.children[first].setAttribute("stroke", "#4f46e5");
+      g.children[first].setAttribute("stroke-width", "2");
+      g.children[first].setAttribute("stroke-dasharray", "6 4");
+      const m = marksOf(d.id);
+      const title = svgEl("title");
+      title.textContent = sentences(_("Not saved yet: click to go on with it, then Add."), m && m.missing ? missingText(m.missing) : "");
+      g.append(title);
+      pendingMarks(g, m, h);
+      g.addEventListener("pointerdown", (ev) => startDrag(ev, null, d));
       world.append(g);
     }
     flowsLayer = svgEl("g", { id: "flows", "pointer-events": "none" });
@@ -656,6 +677,27 @@ export function createCanvas(svg, opts = {}) {
     });
   }
 
+  // missingText tells how many required fields are left empty.
+  const missingText = (count) => (count === 1 ? _("1 required field is empty.") : _("{n} required fields are empty.", { n: count }));
+
+  // pendingMarks draws what is not saved at a node or a draft of a
+  // height (m: marksOf's): a dashed ring of the warning color around a
+  // node whose settings were changed and not saved, and a badge at its
+  // corner of the required fields left empty.
+  function pendingMarks(g, m, h) {
+    if (!m) return;
+    if (m.edited) g.append(svgEl("rect", { x: "-8", y: "-8", width: NODE_W + 16, height: h + 16, rx: "14", fill: "none", stroke: WARN_COLOR, "stroke-width": "2", "stroke-dasharray": "5 3", "pointer-events": "none" }));
+    if (!m.missing) return;
+    const badge = svgEl("g", { transform: "translate(6 -6)" });
+    badge.append(svgEl("circle", { r: "9", fill: WARN_COLOR, stroke: "#fff", "stroke-width": "2" }));
+    const x = svgEl("text", { "text-anchor": "middle", y: "4", "font-size": "11", "font-weight": "700", fill: "#fff" });
+    x.textContent = m.missing > 9 ? "9+" : String(m.missing);
+    const title = svgEl("title");
+    title.textContent = missingText(m.missing);
+    badge.append(x, title);
+    g.append(badge);
+  }
+
   function nodeBox(n, p, isSelected) {
     const t = typeOf(n);
     const c = connecting();
@@ -684,8 +726,11 @@ export function createCanvas(svg, opts = {}) {
     const typed = [];
     if (t.in.length || t.anyKind) typed.push(t.anyKind ? _("takes any kind") : _("takes {kinds}", { kinds: payloadText(t.in) }));
     if (t.out.length) typed.push(_("sends on {kinds}", { kinds: payloadText(t.out) }));
-    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}${n.description ? "\n" + n.description : ""}`;
+    const m = editable ? marksOf(n.name) : null;
+    const pending = m && m.edited ? "\n" + sentences(_("Changed, not saved: click to go on with it, then Save."), m.missing ? missingText(m.missing) : "") : "";
+    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}${n.description ? "\n" + n.description : ""}${pending}`;
     g.append(title);
+    pendingMarks(g, m, h);
     const l = live ? live.nodes[n.name] : null;
     if (l && (l.held || l.open || l.pending || l.failed)) {
       // a badge of what waits at the node
@@ -877,10 +922,10 @@ export function createCanvas(svg, opts = {}) {
   // nodeAt is the node drawn under a pointer event.
   const nodeAt = (ev) => document.elementFromPoint(ev.clientX, ev.clientY)?.closest("g[data-name]")?.dataset.name || null;
 
-  // Dragging: the background pans, a node moves (a click selects it), a
-  // port draws an edge, two pointers pinch. Not editable, a node is only
-  // selected.
-  function startDrag(ev, n) {
+  // Dragging: the background pans, a node or a draft (d) moves (a click
+  // selects it), a port draws an edge, two pointers pinch. Not editable, a
+  // node is only selected.
+  function startDrag(ev, n, d) {
     if (ev.button !== 0) return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -894,9 +939,9 @@ export function createCanvas(svg, opts = {}) {
       drag = { kind: "edge", from: n, port, line, label: wireLabel(), color, x1: p.x, y1: p.y, compat: compatOf(n, port), over: null };
       draw(); // the nodes that would not take it fade
     } else if (editable || !n) {
-      const p = n ? pos(n.name) : draftPos;
+      const p = n ? pos(n.name) : d.pos;
       const w = toWorld(s);
-      drag = { kind: "move", node: n, dx: w.x - p.x, dy: w.y - p.y, moved: false };
+      drag = { kind: "move", node: n, draft: d, dx: w.x - p.x, dy: w.y - p.y, moved: false };
     } else {
       drag = { kind: "click", node: n };
     }
@@ -940,7 +985,7 @@ export function createCanvas(svg, opts = {}) {
       const w = toWorld(s);
       const p = { x: snap(w.x - drag.dx), y: snap(w.y - drag.dy) };
       if (drag.node) layout[drag.node.name] = p;
-      else draftPos = p;
+      else drag.draft.pos = p;
       drag.moved = true;
       draw();
     } else if (drag.kind === "edge") {
@@ -978,6 +1023,7 @@ export function createCanvas(svg, opts = {}) {
       case "pan":
         if (!d.moved) {
           selected = null;
+          selectedDraft = null;
           draw();
           onSelect(null);
         }
@@ -988,12 +1034,19 @@ export function createCanvas(svg, opts = {}) {
         onSelect(d.node.name);
         return;
       case "move":
-        if (!d.node) return;
-        if (d.moved) onMove(d.node.name, layout[d.node.name]);
-        else {
+        if (d.moved) {
+          // a draft keeps its place in the editor until it is added
+          if (d.node) onMove(d.node.name, layout[d.node.name]);
+        } else if (d.node) {
           selected = d.node.name;
+          selectedDraft = null;
           draw();
           onSelect(d.node.name);
+        } else {
+          selected = null;
+          selectedDraft = d.draft.id;
+          draw();
+          onSelectDraft(d.draft.id);
         }
         return;
       case "edge": {
@@ -1038,17 +1091,17 @@ export function createCanvas(svg, opts = {}) {
     },
     setSelected(name) {
       selected = name;
-      draft = null;
-      draftPos = null;
+      selectedDraft = null;
       draw();
     },
-    setDraft(d, p) {
-      draft = d;
-      draftPos = p;
-      selected = null;
+    // setDrafts takes the drafts ({id, kind, pos}, the editor's own), and
+    // the one in the sidebar (an id, or null).
+    setDrafts(list, id) {
+      drafts = list;
+      selectedDraft = id;
+      if (id) selected = null;
       draw();
     },
-    draftPos: () => draftPos,
     pos,
     freeSpot,
     center,

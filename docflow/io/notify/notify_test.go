@@ -208,3 +208,12 @@ func TestNotifyMail(t *testing.T) {
 		t.Errorf("subject %q, message id %q", s, flowtest.Header(mails[0].Data, "Message-Id"))
 	}
 }
+
+// The settings the editor marks as required are those Check refuses a
+// notify node without: how it notifies, and what that way needs.
+func TestRequired(t *testing.T) {
+	e := flowtest.New(t, nil)
+	e.Required(docflow.Node{Name: "slack", Kind: notify.KindNotify, Via: notify.ViaSlack, Credential: "ops-webhook"})
+	e.Required(docflow.Node{Name: "mail", Kind: notify.KindNotify, Via: notify.ViaMail, URL: "smtp://127.0.0.1:2525", From: "d@example.com", Recipients: []string{"a@example.com"}})
+	e.Required(docflow.Node{Name: "web", Kind: notify.KindNotify, Via: notify.ViaHTTP, URL: "https://example.com/hook"})
+}

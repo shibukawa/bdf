@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -96,6 +98,65 @@ func (e *Env) Put(nodes ...docflow.Node) string {
 		}
 	}
 	return key
+}
+
+// Required checks the settings a kind says are required (Kind.Required,
+// as the editor marks them) against its Check: valid is put, and none of
+// those settings is left out of it (those whose If its settings fit) but
+// the node is refused.
+func (e *Env) Required(valid docflow.Node) {
+	e.T.Helper()
+	ctx := context.Background()
+	if _, err := e.M().PutNode(ctx, valid); err != nil {
+		e.T.Fatalf("put %s: %v", valid.Name, err)
+	}
+	raw, err := json.Marshal(valid)
+	if err != nil {
+		e.T.Fatal(err)
+	}
+	var settings map[string]any
+	json.Unmarshal(raw, &settings)
+	var required []docflow.Required
+	for _, k := range docflow.KindInfos() {
+		if k.Name == valid.Kind {
+			required = k.Required
+		}
+	}
+	if len(required) == 0 {
+		e.T.Fatalf("%s requires nothing", valid.Kind)
+	}
+	checked := 0
+	for _, r := range required {
+		fits := true
+		for k, v := range r.If {
+			fits = fits && fmt.Sprint(settings[k]) == v
+		}
+		if !fits {
+			continue
+		}
+		if _, ok := settings[r.Key]; !ok {
+			e.T.Errorf("%s: %s requires %q, which the node has no value of", valid.Name, valid.Kind, r.Key)
+			continue
+		}
+		without := map[string]any{}
+		for k, v := range settings {
+			if k != r.Key {
+				without[k] = v
+			}
+		}
+		b, _ := json.Marshal(without)
+		var n docflow.Node
+		if err := json.Unmarshal(b, &n); err != nil {
+			e.T.Fatal(err)
+		}
+		if _, err := e.M().PutNode(ctx, n); !errors.Is(err, docflow.ErrInvalid) {
+			e.T.Errorf("%s without %s: %v, not refused", valid.Name, r.Key, err)
+		}
+		checked++
+	}
+	if checked == 0 {
+		e.T.Errorf("%s: no required setting fits the node", valid.Name)
+	}
 }
 
 // Doc is a .bdf document of pages.

@@ -10,7 +10,7 @@ aliases:
 constraints:
 - 元ファイル（PDF・Word・PowerPoint）ごとの書き手は作らない。BDF 経由の 1 本で全形式に効かせ、変換済みの BDF からも作れるようにする
 - wire format は変えない。足りない情報は読み手のヒューリスティックで補い、確実にしたいものは MARK の payload の規約（互換）として後から足す
-- 出力はディレクトリ: <name>.md と、ハッシュを名前にした画像。ページ区切りは書かない
+- '出力はディレクトリ: <name>.md と、ハッシュを名前にした画像。ページ区切りは書かない'
 facts:
   structure_source: bdf.ExtractContent（packages/core/src/text.ts の extractContent の双子。run と構造ノード、LINK、IMAGE）。pdfbdf の tagger は独自の木のまま（後から寄せられる）
   views: scroll があればそれ（Word・HTML・Markdown・EPUB。ページで途切れない）、なければ全ビュー。シートはシート名の見出しの下の 1 つの表
@@ -33,7 +33,10 @@ facts:
   verification: testdata の全文書で run の文字列が残ることを確認（リストの記号を除く）。Markdown フィクスチャの往復、Word・PowerPoint・Excel・タグ付き PDF・タグなし PDF の要点
   evidence_2026_10_22: reportlab で作った 3 ページ 2 段組の論文風 PDF で、段の読み順が保たれ、柱・フッター・ページ番号が落ち、脚注番号が <sup> になった
 open_questions:
-- グラフの系列を代替テキストではなく表として出すか（BDF に描かれない表を持つ仕組みはない）
+  chart-series-table:
+    text: グラフの系列を代替テキストではなく表として出すか（BDF に描かれない表を持つ仕組みはない）
+    state: answered
+    resolution: requirement:data-tables（PR 139）で描かれない表（Part table）を持ち、Markdown は DATA のある図の代替テキストの後に GFM の表を出す
 relations:
 - relation: sibling_of
   to: requirement:pdf-export

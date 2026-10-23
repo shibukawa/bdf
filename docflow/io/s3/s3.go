@@ -53,8 +53,10 @@ const (
 const DefaultPath = "{{meta.$job}}/{{meta.$name}}"
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindS3, Title: "S3", Role: docflow.RoleExit, Check: checkS3, Send: send})
-	docflow.RegisterKind(docflow.Kind{Name: KindTrigger, Title: "S3 Trigger", Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Fetch: fetch,
+	// both name their bucket (url)
+	bucket := []docflow.Required{{Key: "url"}}
+	docflow.RegisterKind(docflow.Kind{Name: KindS3, Title: "S3", Role: docflow.RoleExit, Check: checkS3, Required: bucket, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindTrigger, Title: "S3 Trigger", Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Required: bucket, Fetch: fetch,
 		FetchSchema: refSchema})
 }
 

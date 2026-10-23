@@ -193,3 +193,9 @@ func TestHTTPRefused(t *testing.T) {
 		}
 	}
 }
+
+// The settings the editor marks as required are those Check refuses a
+// node without.
+func TestRequired(t *testing.T) {
+	flowtest.New(t, nil).Required(docflow.Node{Name: "hook", Kind: http.KindHTTP, URL: "https://example.com/in"})
+}

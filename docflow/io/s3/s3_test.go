@@ -197,3 +197,11 @@ func adminPost(e *flowtest.Env, path string) (int, error) {
 	res.Body.Close()
 	return res.StatusCode, nil
 }
+
+// The settings the editor marks as required are those Check refuses a
+// node without: the bucket, of either kind.
+func TestRequired(t *testing.T) {
+	e := flowtest.New(t, nil)
+	e.Required(docflow.Node{Name: "copy", Kind: s3.KindS3, URL: "s3://archive?region=ap-northeast-1"})
+	e.Required(docflow.Node{Name: "trigger", Kind: s3.KindTrigger, URL: "s3://in?region=ap-northeast-1"})
+}
