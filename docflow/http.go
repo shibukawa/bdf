@@ -73,6 +73,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET "+OutPath+"/{node}/{job}", h.cors(h.getExportEntry))
 	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/record", h.cors(h.exportRecord))
 	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/document", h.cors(h.exportDocument))
+	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/pages/{page}", h.cors(h.exportPage))
 	mux.HandleFunc("OPTIONS "+OutPath+"/{rest...}", h.cors(nil))
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))

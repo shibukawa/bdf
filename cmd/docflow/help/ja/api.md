@@ -95,6 +95,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `GET /out/<name>/<job>` | 1 つのエントリ |
 | `GET /out/<name>/<job>/record` | アーカイブのジョブの記録（インボックスのエントリならジョブ） |
 | `GET /out/<name>/<job>/document` | アーカイブが書いたとおりの文書 |
+| `GET /out/<name>/<job>/pages/<n>.png?w=` | `.bdf` 文書のページの PNG |
 
 ## アプリと監査 {#apps}
 

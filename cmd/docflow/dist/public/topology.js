@@ -1728,7 +1728,8 @@ function usagePanel(n, box) {
       sec.append(pre(`GET ${location.origin}/out/${n.name}
 GET ${location.origin}/out/${n.name}/<job>
 GET ${location.origin}/out/${n.name}/<job>/record
-GET ${location.origin}/out/${n.name}/<job>/document`));
+GET ${location.origin}/out/${n.name}/<job>/document
+GET ${location.origin}/out/${n.name}/<job>/pages/<n>.png?w=`));
       box.append(sec);
       listedSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
       break;

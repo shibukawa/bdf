@@ -62,7 +62,7 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("document: %v %v", doc["openapi"], doc["servers"])
 	}
 	want := []string{"/api/jobs/{id}", "/api/jobs/{id}/cancel", "/api/jobs/{id}/document", "/in/data-in", "/in/docs-in",
-		"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/record"}
+		"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/pages/{page}", "/out/out/{job}/record"}
 	if got := keysOf(doc["paths"]); !slices.Equal(got, want) {
 		t.Fatalf("paths %v; want %v", got, want)
 	}
@@ -175,7 +175,7 @@ func TestOpenAPI(t *testing.T) {
 	if got := keysOf(get(admin, "?node=docs-in", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/api/jobs/{id}", "/api/jobs/{id}/cancel", "/api/jobs/{id}/document", "/in/docs-in"}) {
 		t.Fatalf("docs-in %v", got)
 	}
-	if got := keysOf(get(admin, "?node=out", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/record"}) {
+	if got := keysOf(get(admin, "?node=out", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/pages/{page}", "/out/out/{job}/record"}) {
 		t.Fatalf("out %v", got)
 	}
 	get(admin, "?node=seen", http.StatusNotFound)
@@ -200,7 +200,7 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("erp %v", got)
 	}
 	get(bearer(token("erp")), "?node=docs-in", http.StatusNotFound)
-	if got := keysOf(get(bearer(token("backend")), "", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/record"}) {
+	if got := keysOf(get(bearer(token("backend")), "", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/pages/{page}", "/out/out/{job}/record"}) {
 		t.Fatalf("backend %v", got)
 	}
 	// listed with the wrong scope (print, not print.template), or not
@@ -209,7 +209,7 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("stranger %v", got)
 	}
 	alice := func(r *http.Request) { r.Header.Set("X-Test-Viewer", "alice") }
-	if got := keysOf(get(alice, "", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/record"}) {
+	if got := keysOf(get(alice, "", http.StatusOK)["paths"]); !slices.Equal(got, []string{"/out/out", "/out/out/{job}", "/out/out/{job}/document", "/out/out/{job}/pages/{page}", "/out/out/{job}/record"}) {
 		t.Fatalf("alice %v", got)
 	}
 	get(func(*http.Request) {}, "", http.StatusUnauthorized)

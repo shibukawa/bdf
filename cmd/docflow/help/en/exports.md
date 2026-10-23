@@ -39,6 +39,7 @@ The owner is what the sender claimed: whoever may send to the entry decides whos
 | `GET /out/<name>/<job>` | one entry, with who sent it and where the archive wrote it |
 | `GET /out/<name>/<job>/record` | the archive's record of the job: its metadata, payloads and legs when it was written; of an inbox's entry, the job as it is now |
 | `GET /out/<name>/<job>/document` | the document as the archive wrote it; each download is in the audit log |
+| `GET /out/<name>/<job>/pages/<n>.png?w=` | a page of a `.bdf` document drawn as PNG, `w` pixels wide (800), to look at before the download; not in the audit log |
 
 The export's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — describes these, with the fields of its entries ([OpenAPI](api.md#openapi)).
 
