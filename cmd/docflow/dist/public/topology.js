@@ -30,8 +30,24 @@ let topo = []; // the nodes, as /api/topology lists them
 let formats = []; // the formats an endpoint may take
 let me = null; // /api/me: whether this process has ports of its own
 let apps = []; // the apps, for an endpoint's allow-list
+let kinds = {}; // GET /api/kinds by name: the settings each requires
 let selected = null; // the node in the sidebar
-let draft = null; // a node being added: {kind}
+// drafts are the nodes being added, not put yet: {id, kind, pos, kept}
+// (kept: their form when the sidebar left them, shown again when they
+// are clicked); draft is the one in the sidebar. A draft is put by its
+// Add, and goes with Cancel (or Escape).
+let drafts = [];
+let draft = null;
+let drafted = 0; // the drafts made, for their ids
+// edits are the forms of saved nodes whose settings were changed in the
+// sidebar and not saved, by name, kept when the sidebar left them:
+// shown again when the node is, until Save or Revert.
+const edits = new Map();
+// shown is what the sidebar's form is of: {name, draft, base (the form
+// as the saved node makes it, to tell a change), touched (the ids of the
+// fields left), all (every required field empty is marked), restored
+// (it shows edits kept), dirty, marked}, or null.
+let shown = null;
 let fitted = false;
 let etag = ""; // the activity's revision
 let live = null; // the activity, as /api/topology/live last told it
@@ -45,10 +61,10 @@ let jobs = []; // looking: the jobs the person sees, latest first
 const canvas = createCanvas($("canvas"), {
   editable,
   onSelect(name) {
-    selected = name;
-    draft = null;
-    renderSidebar();
-    $("sidebar").scrollTop = 0;
+    show(name, null);
+  },
+  onSelectDraft(id) {
+    show(null, drafts.find((d) => d.id === id) || null);
   },
   onMove(name, p) {
     api("PUT", "/api/layout", { positions: { [name]: p } }).catch((e) => status(e.message, true));
@@ -60,9 +76,46 @@ const canvas = createCanvas($("canvas"), {
     status(`${from.name} → ${to}: ${why}`, true);
   },
   onRemoveEdge: removeEdge,
-  draftLabel: () => $("f-title")?.value.trim() || $("f-name")?.value.trim() || "",
-  draftNote: () => $("f-description")?.value || "",
+  draftLabel: (d) => typed(d, "f-title").trim() || typed(d, "f-name").trim(),
+  draftNote: (d) => typed(d, "f-description"),
+  marksOf,
 });
+
+// typed is a field of a draft as typed: in the sidebar when the draft is
+// there, else as it was kept.
+function typed(d, id) {
+  if (shown && shown.draft === d) return shown.form.querySelector("#" + id)?.value || "";
+  return (d.kept && d.kept.raw[id]) || "";
+}
+
+// marksOf tells the canvas what is not saved at a node or a draft (by
+// its id): the settings changed, and the required fields left empty (in
+// the sidebar, those marked; of one left, every one, as it shows them
+// when it is opened again).
+function marksOf(key) {
+  const d = drafts.find((x) => x.id === key);
+  if (d) return shown && shown.draft === d ? { missing: shown.marked } : { missing: d.kept ? d.kept.missing : 0 };
+  if (shown && shown.name === key && !shown.draft) return shown.dirty ? { edited: true, missing: shown.marked } : null;
+  const kept = edits.get(key);
+  return kept ? { edited: true, missing: kept.missing } : null;
+}
+
+// show opens a node (by name) or a draft in the sidebar, keeping what
+// was there first.
+function show(name, d) {
+  keepShown();
+  selected = d ? null : name;
+  draft = d;
+  renderSidebar();
+  syncCanvas();
+  $("sidebar").scrollTop = 0;
+}
+
+// syncCanvas tells the canvas the drafts and what is selected.
+function syncCanvas() {
+  canvas.setDrafts(drafts, draft ? draft.id : null);
+  if (!draft) canvas.setSelected(selected);
+}
 
 async function load() {
   try {
@@ -71,12 +124,18 @@ async function load() {
     if (editable) {
       if (!formats.length) formats = await api("GET", "/api/formats");
       if (!me) me = await api("GET", "/api/me");
+      if (!Object.keys(kinds).length) kinds = Object.fromEntries((await api("GET", "/api/kinds")).map((k) => [k.name, k]));
       apps = await api("GET", "/api/apps");
       $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
     } else {
       [dests, jobs] = await Promise.all([api("GET", "/api/destinations"), api("GET", "/api/my/jobs?limit=200")]);
     }
-    if (selected && !topo.some((n) => n.name === selected)) selected = null;
+    // the edits of a node deleted (elsewhere) go with it
+    for (const name of edits.keys()) if (!topo.some((n) => n.name === name)) edits.delete(name);
+    if (selected && !topo.some((n) => n.name === selected)) {
+      selected = null;
+      if (shown && !shown.draft) shown = null;
+    }
     canvas.setData(topo, l.positions || {});
     if (!fitted) {
       canvas.fit();
@@ -221,20 +280,31 @@ function settingsOf(n, kind) {
 
 // Adding a node: the palette makes a draft, placed at the centre of the
 // view clear of the others; the sidebar takes its name and settings, and
-// Add puts it.
+// Add puts it. A draft left before it is added stays on the canvas, with
+// what was typed for it, until it is added or canceled.
 if (editable) $("palette").addEventListener("click", (ev) => {
   const a = ev.target.closest("a[data-kind]");
   if (!a) return;
   ev.preventDefault();
   document.activeElement?.blur();
-  draft = { kind: a.dataset.kind, name: "", title: "" };
-  selected = null;
+  const d = { id: "+" + ++drafted, kind: a.dataset.kind, pos: canvas.freeSpot(canvas.center()), kept: null };
+  drafts.push(d);
   // the sidebar first: the draft is drawn with its title and description
-  renderSidebar();
-  canvas.setDraft(draft, canvas.freeSpot(canvas.center()));
-  $("sidebar").scrollTop = 0;
+  show(null, d);
   $("f-name")?.focus();
 });
+
+// dropDraft cancels a draft: it goes from the canvas, with what was
+// typed for it.
+function dropDraft(d) {
+  drafts = drafts.filter((x) => x !== d);
+  if (draft === d) {
+    draft = null;
+    shown = null;
+  }
+  renderSidebar();
+  syncCanvas();
+}
 
 // The sidebar: the node selected (or the draft), its kind's fields, and
 // what is at it.
@@ -292,7 +362,8 @@ function picker(name, chosen, except, carried) {
   return box;
 }
 
-const picked = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((c) => c.value);
+// picked are the values checked of the checkboxes of a name in a form.
+const picked = (form, name) => [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((c) => c.value);
 
 // ruleRow is a rule of a filter in the sidebar.
 function ruleRow(r = { match: {}, to: [] }) {
@@ -317,10 +388,10 @@ function ruleRow(r = { match: {}, to: [] }) {
   return row;
 }
 
-// rulesOf reads the filter's rules from the sidebar.
-function rulesOf() {
+// rulesOf reads the filter's rules from its form.
+function rulesOf(form) {
   const out = [];
-  for (const row of document.querySelectorAll("#f-rules .rule")) {
+  for (const row of form.querySelectorAll("#f-rules .rule")) {
     const v = (k) => row.querySelector(`[data-k="${k}"]`).value.trim();
     const match = {};
     if (v("name")) match.name = v("name");
@@ -378,8 +449,8 @@ function checkRow(c, assert) {
 }
 
 // checksOf reads the checks of a box of rows; a bound that is not a
-// number is refused here.
-function checksOf(box) {
+// number is refused here (lenient: kept as typed, as a form left is).
+function checksOf(box, lenient) {
   const out = [];
   for (const row of box.querySelectorAll(":scope > .check")) {
     const raw = (k) => row.querySelector(`[data-k="${k}"]`)?.value ?? "";
@@ -391,7 +462,8 @@ function checksOf(box) {
     for (const k of ["min", "max"]) {
       if (v(k) === "") continue;
       c[k] = Number(v(k));
-      if (!Number.isFinite(c[k])) throw new Error(_("{key}: {bound} {value} is not a number", { key: c.key, bound: k, value: v(k) }));
+      if (!Number.isFinite(c[k]) && lenient) c[k] = v(k);
+      else if (!Number.isFinite(c[k])) throw new Error(_("{key}: {bound} {value} is not a number", { key: c.key, bound: k, value: v(k) }));
     }
     if (v("enum")) c.enum = names(v("enum"));
     if (v("message")) c.message = v("message");
@@ -417,12 +489,12 @@ function caseRow(c = { when: [], to: [] }) {
   return row;
 }
 
-// casesOf reads the branch's cases from the sidebar: a case with no name,
+// casesOf reads the branch's cases from its form: a case with no name,
 // check or node is left out.
-function casesOf() {
+function casesOf(form, lenient) {
   const out = [];
-  for (const row of document.querySelectorAll("#f-cases > .case")) {
-    const c = { name: row.querySelector('[data-k="name"]').value.trim(), when: checksOf(row.querySelector(".checks")), to: names(row.querySelector(':scope > [data-k="to"]').value) };
+  for (const row of form.querySelectorAll("#f-cases > .case")) {
+    const c = { name: row.querySelector('[data-k="name"]').value.trim(), when: checksOf(row.querySelector(".checks"), lenient), to: names(row.querySelector(':scope > [data-k="to"]').value) };
     if (!c.name && !c.when.length && !c.to.length) continue;
     out.push(c);
   }
@@ -458,9 +530,9 @@ function metaField(n) {
 
 // metaOf reads the metadata rows: a value that is JSON (a number, true,
 // an object) is kept as that, else as text.
-function metaOf() {
+function metaOf(form) {
   const out = {};
-  for (const row of document.querySelectorAll("#f-meta .meta")) {
+  for (const row of form.querySelectorAll("#f-meta .meta")) {
     const k = row.querySelector('[data-k="key"]').value.trim();
     const v = row.querySelector('[data-k="value"]').value;
     if (!k) continue;
@@ -549,12 +621,13 @@ function parsePrinterURL(u) {
   }
 }
 
-// composeURL is the printer's URL of the sidebar's fields.
-function composeURL() {
-  const scheme = $("f-scheme").value;
-  const host = $("f-host").value.trim();
-  const port = $("f-pport").value.trim();
-  let path = $("f-path").value.trim();
+// composeURL is the printer's URL of the fields of its form.
+function composeURL(form) {
+  const f = (id) => form.querySelector("#" + id);
+  const scheme = f("f-scheme").value;
+  const host = f("f-host").value.trim();
+  const port = f("f-pport").value.trim();
+  let path = f("f-path").value.trim();
   if (!host) return "";
   if (!path && scheme.startsWith("ipp")) path = "/ipp/print";
   if (path && !path.startsWith("/")) path = "/" + path;
@@ -607,20 +680,22 @@ function cupsOutFields(form, n) {
   form.append(field(_("Queue"), box, _("Its name on the server; Find queues lists them (the server, and the credential below if it asks for one, first).")));
   form.append(field(_("Credential"), input("f-credential", n.credential || "", { placeholder: _("a name: the secret is DOCFLOW_CRED_<name> (user:password)"), autocomplete: "off" }), _("None: the server asks for no user and password.")));
   const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
-  const update = () => (preview.textContent = cupsQueueURL() || "—");
+  const update = () => (preview.textContent = cupsQueueURL(form) || "—");
   form.append(preview);
   setTimeout(update);
   for (const x of [row, q]) x.addEventListener("input", update);
   row.addEventListener("change", update);
 }
 
-// cupsQueueURL is the URL of the queue of a CUPS server (sink)'s fields.
-function cupsQueueURL() {
-  const host = $("f-chost").value.trim();
-  const q = $("f-queue");
+// cupsQueueURL is the URL of the queue of a CUPS server (sink)'s fields
+// in its form.
+function cupsQueueURL(form) {
+  const f = (id) => form.querySelector("#" + id);
+  const host = f("f-chost").value.trim();
+  const q = f("f-queue");
   const name = q.value.trim().replace(/^\/+/, "");
   if (!host || !name) return "";
-  return `${$("f-cscheme").value}://${host}:${$("f-cport").value.trim() || 631}${q.dataset.path || "/"}${name}`;
+  return `${f("f-cscheme").value}://${host}:${f("f-cport").value.trim() || 631}${q.dataset.path || "/"}${name}`;
 }
 
 // Looking: the sidebar of a node is its counts, a form to print there
@@ -739,13 +814,210 @@ function viewSidebar() {
 // (how computers, applications and devices reach it, and what is at it).
 let tab = "settings";
 
+// A form left for another node is kept: a draft's always, a saved
+// node's when its settings were changed (edits). Opened again, it is made
+// of the node as it is now with what was changed in it (the fields that
+// differ from the node it was made of: an edge dragged meanwhile is not
+// undone), and every required field left empty is marked.
+
+// snapshot is what a form holds: the node's settings as read from it
+// (formOf, lenient), the fields as typed (by id), and the number of
+// required fields left empty.
+function snapshot(n, form) {
+  const raw = {};
+  for (const e of form.querySelectorAll("input[id], select[id], textarea[id]")) raw[e.id] = e.type === "checkbox" ? e.checked : e.value;
+  const q = form.querySelector("#f-queue");
+  if (q) raw["f-queue@path"] = q.dataset.path || "";
+  return { node: formOf(n, form, true), raw, missing: missingOf(n, form).reduce((c, m) => c + m.count, 0) };
+}
+
+const differs = (a, b) => JSON.stringify([a.node, a.raw]) !== JSON.stringify([b.node, b.raw]);
+
+// keepShown keeps the form in the sidebar before it goes.
+function keepShown() {
+  if (!shown || !shown.form) return;
+  const n = shown.draft || topo.find((x) => x.name === shown.name);
+  if (!n) return;
+  const kept = snapshot(n, shown.form);
+  if (shown.draft) {
+    if (drafts.includes(shown.draft)) shown.draft.kept = kept;
+  } else if (differs(kept, shown.base)) edits.set(shown.name, { ...kept, base: shown.base });
+  else edits.delete(shown.name);
+}
+
+// restoredForm is the form of a node as it was kept: made of the node
+// with the settings changed in it, then each field changed as it was
+// typed (and dispatched, for the checks and the previews to follow).
+function restoredForm(n, kept) {
+  const base = kept.base;
+  const node = { ...n };
+  for (const [k, v] of Object.entries(kept.node)) if (!base || JSON.stringify(v) !== JSON.stringify(base.node[k])) node[k] = v;
+  if (base) for (const k of Object.keys(base.node)) if (!(k in kept.node)) delete node[k];
+  const form = settingsForm(node);
+  for (const [key, v] of Object.entries(kept.raw)) {
+    if (base && base.raw[key] === v) continue;
+    const [id, attr] = key.split("@");
+    const e = form.querySelector("#" + id);
+    if (!e) continue;
+    if (attr) e.dataset[attr] = v;
+    else if (e.type === "checkbox" ? e.checked !== v : e.value !== v) {
+      if (e.type === "checkbox") e.checked = v;
+      else e.value = v;
+      e.dispatchEvent(new Event(e.tagName === "SELECT" || e.type === "checkbox" ? "change" : "input", { bubbles: true }));
+    }
+  }
+  return form;
+}
+
+// sidebarForm is the form of the node or the draft opened in the
+// sidebar, as it was kept or as the node makes it, with the required
+// fields marked; the form there before is kept first.
+function sidebarForm(n) {
+  const same = shown && (draft ? shown.draft === draft : !shown.draft && shown.name === n.name);
+  keepShown();
+  const kept = draft ? draft.kept : edits.get(n.name);
+  let form = settingsForm(n);
+  const base = draft ? null : snapshot(n, form);
+  if (kept) form = restoredForm(n, kept);
+  // the same node made again (the topology read again) keeps what was
+  // marked; one opened again shows what was kept of it
+  const restored = !draft && !!kept && (same ? shown.restored : true);
+  shown = { name: draft ? null : n.name, draft, form, base, touched: same ? shown.touched : new Set(), all: same ? shown.all : !!kept, restored, dirty: false, marked: 0 };
+  if (shown.restored) {
+    const note = el("div", undefined, { role: "status", className: "alert alert-warning alert-soft mb-1 flex flex-wrap items-center gap-2 px-3 py-2 text-sm" });
+    const revert = el("button", _("Revert"), { type: "button", className: "btn btn-xs" });
+    revert.addEventListener("click", () => {
+      edits.delete(n.name);
+      shown = null;
+      renderSidebar();
+      canvas.draw();
+    });
+    note.append(el("span", _("Changed, not saved: Save keeps the changes, Revert goes back to the node as it is."), { className: "flex-1" }), revert);
+    form.prepend(note);
+  }
+  // a field left is marked when it is required and empty; what is not
+  // saved is drawn on the canvas as it is typed
+  form.addEventListener("focusout", (ev) => {
+    if (!shown || shown.form !== form) return;
+    if (ev.target.id) shown.touched.add(ev.target.id);
+    refreshShown();
+  });
+  form.addEventListener("input", refreshShown);
+  form.addEventListener("change", refreshShown);
+  // a row added or removed (a rule, a check, a key) changes the settings
+  form.addEventListener("click", (ev) => {
+    if (ev.target.closest('button[type="button"]')) setTimeout(refreshShown);
+  });
+  refreshShown();
+  return form;
+}
+
+// refreshShown marks the required fields of the form in the sidebar and
+// tells the canvas what is not saved there.
+function refreshShown() {
+  if (!shown) return;
+  const n = shown.draft || topo.find((x) => x.name === shown.name);
+  if (!n) return;
+  shown.marked = markRequired(n, shown.form);
+  if (!shown.draft) shown.dirty = differs(snapshot(n, shown.form), shown.base);
+  canvas.draw();
+}
+
+// Required fields: a field of the attribute required (the kind's Check
+// refuses a node without it), and the settings (JSON) of an adapter's
+// kind that its Check requires (GET /api/kinds). One left empty is
+// marked in the warning color, with what it needs under it, once it was
+// left (blur), or every one when the form is sent or opened again after
+// it was left; a value that is wrong stays the error's red (liveCheck).
+
+// missingOf are the required fields of a form left empty: {box, text,
+// count}, with what each needs; the settings (JSON) of an adapter are
+// one box, of the keys it lacks.
+function missingOf(n, form) {
+  const out = [];
+  for (const box of form.querySelectorAll("[required]")) if (!box.disabled && !box.value.trim()) out.push({ box, text: box.dataset.need || _("Required: the node is not added or saved without it."), count: 1 });
+  const box = form.querySelector("#f-settings");
+  const keys = box ? missingSettings(n.kind, box.value) : [];
+  if (keys.length) out.push({ box, text: _("Required in the settings: {keys}.", { keys: keys.join(", ") }), count: keys.length });
+  return out;
+}
+
+// missingSettings are the keys of a kind's settings (JSON) its Check
+// requires and the JSON lacks (of those whose if it fits); none when it
+// is not JSON, which is wrong instead.
+function missingSettings(kind, text) {
+  let v;
+  try {
+    v = JSON.parse(text || "{}");
+  } catch {
+    return [];
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [];
+  const empty = (x) => x === undefined || x === null || (typeof x === "string" && !x.trim()) || (Array.isArray(x) && !x.length);
+  const fits = (r) => Object.entries(r.if || {}).every(([k, want]) => String(v[k] ?? "").trim().toLowerCase() === want);
+  return ((kinds[kind] || {}).required || []).filter((r) => fits(r) && empty(v[r.key])).map((r) => r.key);
+}
+
+// WARN is the class of a field marked required and empty, by its tag.
+const WARN = { INPUT: "input-warning", SELECT: "select-warning", TEXTAREA: "textarea-warning" };
+
+// markRequired marks the required fields of a form left empty that are
+// to be marked (left, or all), and the settings (JSON) that do not parse;
+// it returns how many are marked.
+function markRequired(n, form) {
+  const missing = new Map(missingOf(n, form).map((m) => [m.box, m]));
+  const json = form.querySelector("#f-settings");
+  let marked = 0;
+  for (const box of form.querySelectorAll("[required], #f-settings")) {
+    const due = shown.all || shown.touched.has(box.id);
+    let m = due ? missing.get(box) : null;
+    let wrong = "";
+    if (box === json && due) {
+      try {
+        JSON.parse(json.value || "{}");
+      } catch (e) {
+        wrong = _("Settings: {why}", { why: e.message });
+      }
+    }
+    box.classList.toggle(WARN[box.tagName], !!m && !wrong);
+    if (box === json) box.classList.toggle("textarea-error", !!wrong);
+    let msg = form.querySelector(`[data-need-of="${box.id}"]`);
+    if ((m || wrong) && !msg) {
+      // under the field, or under the row it is in
+      msg = el("p", "", { id: box.id + "-need", className: "label whitespace-normal" });
+      msg.dataset.needOf = box.id;
+      (box.parentElement.classList.contains("grid") ? box.parentElement : box).after(msg);
+    }
+    if (msg) {
+      msg.textContent = wrong || (m ? m.text : "");
+      msg.className = "label whitespace-normal " + (wrong ? "text-error" : "text-warning");
+      msg.hidden = !msg.textContent;
+    }
+    if (m || wrong) {
+      box.setAttribute("aria-invalid", "true");
+      box.setAttribute("aria-describedby", msg.id);
+      if (m) marked += m.count;
+    } else if (msg && box.getAttribute("aria-describedby") === msg.id) {
+      box.removeAttribute("aria-describedby");
+      box.setAttribute("aria-invalid", box.validity.customError ? "true" : "false");
+    }
+  }
+  return marked;
+}
+
+// legendOf is the legend of the field a box is in.
+const legendOf = (box) => box.closest("fieldset")?.querySelector("legend")?.textContent || box.id;
+
 function renderSidebar() {
   if (!editable) return viewSidebar();
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
+    keepShown();
+    shown = null;
     aside.replaceChildren(
       el("p", _("Click a node to edit it here, or add one with “+ Add a node”: it is placed at once, and connected when the nodes after it are there. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer, a branch has a port for each case and one for default, an assert one for what passes and one for what fails. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take."), { className: "text-sm text-base-content/60" }),
+      el("p", _("A node left before it is added stays on the canvas, dashed, with what was typed for it; a node changed and not saved is ringed in amber. Click either to go on with it. A required field left empty is marked in amber once it was left, and a badge on the canvas counts them."), { className: "mt-2 text-sm text-base-content/60" }),
       el("a", _("The manual: the editor, and every kind of node"), { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
     );
     return;
@@ -760,12 +1032,13 @@ function renderSidebar() {
   }
   // the manual's section of the kind (in the language of the pages)
   head.append(el("a", _("Help"), { className: "link link-hover ml-auto text-xs text-base-content/60", href: "/help/nodes#" + n.kind, target: "_blank", rel: "noopener", title: _("The manual: {kind} nodes", { kind: KINDS[n.kind] || n.kind }) }));
+  const form = sidebarForm(n);
   if (draft) {
-    aside.replaceChildren(head, settingsForm(n));
+    aside.replaceChildren(head, form);
     return;
   }
   const settings = el("div");
-  settings.append(settingsForm(n));
+  settings.append(form);
   if (n.kind === "template") {
     const tpls = section(_("Templates"));
     settings.append(tpls);
@@ -775,7 +1048,7 @@ function renderSidebar() {
   usagePanel(n, usage);
   const panels = { settings, usage };
   const tabs = el("div", undefined, { role: "tablist", className: "tabs tabs-border mt-1 mb-2" });
-  const show = () => {
+  const showTab = () => {
     for (const t of tabs.children) {
       t.classList.toggle("tab-active", t.dataset.tab === tab);
       t.setAttribute("aria-selected", String(t.dataset.tab === tab));
@@ -787,11 +1060,11 @@ function renderSidebar() {
     t.dataset.tab = id;
     t.addEventListener("click", () => {
       tab = id;
-      show();
+      showTab();
     });
     tabs.append(t);
   }
-  show();
+  showTab();
   aside.replaceChildren(head, tabs, settings, usage);
 }
 
@@ -825,12 +1098,13 @@ function renameNote(n, to) {
 // liveCheck checks a field as it is typed: it turns red, with what is
 // wrong under it, and the form is not sent until it is right (test gives
 // the error, or ""). note gives what is said under it meanwhile, and
-// whether it is a warning: [text, warn].
+// whether it is a warning: [text, warn]. A field left empty is not
+// wrong: a required one is marked as such (markRequired).
 function liveCheck(box, test, note) {
   const msg = el("p", "", { className: "label whitespace-normal" });
   let touched = !!box.value;
   const run = () => {
-    const err = touched ? test(box.value) : "";
+    const err = touched && box.value ? test(box.value) : "";
     box.classList.toggle("input-error", !!err);
     box.setCustomValidity(err);
     box.setAttribute("aria-invalid", err ? "true" : "false");
@@ -851,7 +1125,7 @@ function liveCheck(box, test, note) {
 function nameField(n) {
   const self = draft ? "" : n.name;
   const box = input("f-name", self, { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, autocomplete: "off", spellcheck: false, maxLength: 80 });
-  if (draft) box.addEventListener("input", () => canvas.draw());
+  box.dataset.need = _("A name is needed: other nodes and the URLs call the node by it.");
   const f = field(_("Name"), box);
   f.append(liveCheck(box, (v) => nameError(v, self), (v) => (!draft && v !== n.name ? [renameNote(n, v), true] : [_("The system's name: letters, digits, . _ and -, no spaces. Other nodes and the URLs call the node by it; the title is what people read."), false])));
   return f;
@@ -902,13 +1176,13 @@ function appsField(n, what) {
 // description, and the fields of its kind.
 function settingsForm(n) {
   const kind = n.kind;
-  const form = el("form", undefined, { className: "flex flex-col gap-1" });
+  // the form marks the required fields itself (markRequired): no
+  // bubbles of the browser's
+  const form = el("form", undefined, { className: "flex flex-col gap-1", noValidate: true });
   const title = input("f-title", n.title || "", { placeholder: _("what people call it: 3F laser, invoices of the ERP …"), maxLength: 255 });
-  if (draft) title.addEventListener("input", () => canvas.draw());
   form.append(field(_("Title"), title, _("Shown on the node, in any characters.")));
   form.append(nameField(n));
   const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: _("what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …") });
-  note.addEventListener("input", () => canvas.draw());
   form.append(field(_("Description"), note, _("A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here.")));
   if (!draft) {
     const k = kindsLine(n);
@@ -1050,7 +1324,7 @@ function settingsForm(n) {
       form.append(field(_("Protocol and address"), row, _("ipp and ipps are IPP printers; socket is port 9100 (raw), lpd a line printer daemon.")));
       form.append(field(_("Path"), input("f-path", u.path, { placeholder: _("/ipp/print (ipp); a queue name (lpd)") })));
       const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
-      const update = () => (preview.textContent = composeURL() || "—");
+      const update = () => (preview.textContent = composeURL(form) || "—");
       form.append(preview);
       setTimeout(update);
       for (const id of ["f-scheme", "f-host", "f-pport", "f-path"]) form.querySelector("#" + id).addEventListener("input", update);
@@ -1068,11 +1342,7 @@ function settingsForm(n) {
   actions.append(el("button", draft ? _("Add") : _("Save"), { type: "submit", className: "btn btn-sm btn-primary" }));
   if (draft) {
     const cancel = el("button", _("Cancel"), { type: "button", className: "btn btn-sm btn-ghost" });
-    cancel.addEventListener("click", () => {
-      draft = null;
-      canvas.setDraft(null, null);
-      renderSidebar();
-    });
+    cancel.addEventListener("click", () => dropDraft(draft));
     actions.append(cancel);
   } else {
     const del = el("button", _("Delete"), { type: "button", className: "btn btn-sm btn-ghost text-error" });
@@ -1084,74 +1354,66 @@ function settingsForm(n) {
   return form;
 }
 
-async function save(ev) {
-  ev.preventDefault();
-  const n = draft || topo.find((x) => x.name === selected);
-  if (!n) return;
-  const name = $("f-name").value;
-  const bad = nameError(name, draft ? "" : n.name);
-  if (bad) {
-    status(bad, true);
-    $("f-name").focus();
-    return;
-  }
-  const rename = !draft && name !== n.name;
-  if (rename && !confirm(_("Rename {was} to {name}?", { was: n.name, name }) + "\n\n" + renameNote(n, name))) return;
-  const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
-  if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
-  if ($("f-settings")) {
+// formOf reads the settings of a node from its form, as PUT /api/nodes
+// takes them; JSON that does not parse and a bound that is not a number
+// are refused (an error), or, lenient (what is kept of a form left),
+// kept as they were typed.
+function formOf(n, form, lenient) {
+  const f = (id) => form.querySelector("#" + id);
+  const body = { kind: n.kind, title: f("f-title").value.trim(), description: f("f-description").value.trim(), scope: f("f-scope").value };
+  if (f("f-owner").value.trim()) body.owner = f("f-owner").value.trim();
+  if (f("f-settings")) {
     try {
-      Object.assign(body, JSON.parse($("f-settings").value || "{}"));
+      Object.assign(body, JSON.parse(f("f-settings").value || "{}"));
     } catch (e) {
-      status(_("Settings: {why}", { why: e.message }), true);
-      return;
+      if (!lenient) throw new Error(_("Settings: {why}", { why: e.message }));
     }
   }
-  if (document.querySelector('input[name="on_error"]')) body.on_error = picked("on_error");
-  const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
+  if (form.querySelector('input[name="on_error"]')) body.on_error = picked(form, "on_error");
+  const dur = (id) => (f(id).value.trim() ? f(id).value.trim() : undefined);
   const entry = () => {
-    body.to = picked("to");
-    body.accept = $("f-accept").value;
-    body.output = $("f-output").value;
-    body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
-    body.meta = metaOf();
+    body.to = picked(form, "to");
+    body.accept = f("f-accept").value;
+    body.output = f("f-output").value;
+    body.formats = [...form.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+    body.meta = metaOf(form);
   };
   switch (n.kind) {
     case "endpoint":
       entry();
-      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
+      body.apps = [...form.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
     case "s3-trigger":
       entry();
-      body.url = $("f-url").value.trim();
+      body.url = f("f-url").value.trim();
       if (dur("f-credential")) body.credential = dur("f-credential");
       if (dur("f-path")) body.path = dur("f-path");
       break;
     case "cups":
       // what computers print is a document, made .bdf: no accept, output or formats
-      body.to = picked("to");
-      body.meta = metaOf();
-      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
+      body.to = picked(form, "to");
+      body.meta = metaOf(form);
+      body.apps = [...form.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       if (dur("f-port")) body.port = Number(dur("f-port"));
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
       break;
     case "template":
-      body.to = picked("to");
-      if ($("f-template").value) body.template = $("f-template").value;
+      body.to = picked(form, "to");
+      if (f("f-template").value) body.template = f("f-template").value;
       if (dur("f-template-from")) body.template_from = dur("f-template-from");
       if (dur("f-list-name")) body.list_name = dur("f-list-name");
-      if ($("f-strict").checked) body.strict = true;
-      body.original = picked("original");
+      if (f("f-strict").checked) body.strict = true;
+      body.original = picked(form, "original");
       break;
     case "convert":
-      body.to = picked("to");
-      body.original = picked("original");
-      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      body.to = picked(form, "to");
+      body.original = picked(form, "original");
+      body.formats = [...form.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       break;
     case "sign":
-      body.to = picked("to");
+      body.to = picked(form, "to");
       if (dur("f-sign-role")) body.sign_role = dur("f-sign-role");
       break;
     case "sink":
@@ -1159,63 +1421,99 @@ async function save(ev) {
       break;
     case "export":
       if (dur("f-by")) body.by = dur("f-by");
-      body.subject = $("f-subject").value;
-      body.fields = names($("f-fields").value);
+      body.subject = f("f-subject").value;
+      body.fields = names(f("f-fields").value);
       if (dur("f-entries")) body.entries = Number(dur("f-entries"));
-      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
+      body.apps = [...form.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       break;
     case "queue":
-      body.to = picked("to");
+      body.to = picked(form, "to");
       break;
     case "filter":
-      body.rules = rulesOf();
-      body.otherwise = picked("otherwise");
+      body.rules = rulesOf(form);
+      body.otherwise = picked(form, "otherwise");
       break;
     case "assert":
     case "branch":
-      try {
-        if (n.kind === "assert") {
-          body.to = picked("to");
-          body.checks = checksOf($("f-checks"));
-        } else {
-          body.cases = casesOf();
-          body.default = picked("default");
-        }
-      } catch (e) {
-        status(e.message, true);
-        return;
+      if (n.kind === "assert") {
+        body.to = picked(form, "to");
+        body.checks = checksOf(f("f-checks"), lenient);
+      } else {
+        body.cases = casesOf(form, lenient);
+        body.default = picked(form, "default");
       }
       break;
     case "class":
-      body.members = names($("f-members").value);
-      body.policy = $("f-policy").value;
+      body.members = names(f("f-members").value);
+      body.policy = f("f-policy").value;
       break;
     case "inbox":
-      body.to = picked("to");
+      body.to = picked(form, "to");
       body.keep = dur("f-keep");
       break;
     case "archive":
-      body.to = picked("to");
-      body.store = $("f-store").value.trim();
-      if ($("f-collection").value.trim()) body.collection = $("f-collection").value.trim();
+      body.to = picked(form, "to");
+      body.store = f("f-store").value.trim();
+      if (f("f-collection").value.trim()) body.collection = f("f-collection").value.trim();
       break;
     case "display":
-      if ($("f-fallback").value) {
-        body.fallback = { printer: $("f-fallback").value };
+      if (f("f-fallback").value) {
+        body.fallback = { printer: f("f-fallback").value };
         if (dur("f-after")) body.fallback.after = dur("f-after");
       }
       body.keep = dur("f-keep");
       body.offline_after = dur("f-offline");
       break;
     case "cups-out":
-      body.url = cupsQueueURL();
+      body.url = cupsQueueURL(form);
       if (dur("f-credential")) body.credential = dur("f-credential");
       break;
     case "printer":
-      body.url = composeURL();
-      body.route = $("f-route").value;
+      body.url = composeURL(form);
+      body.route = f("f-route").value;
       if (dur("f-preview")) body.preview = dur("f-preview");
       break;
+  }
+  return body;
+}
+
+async function save(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const n = draft || topo.find((x) => x.name === selected);
+  if (!n || !shown) return;
+  // the required fields left empty are marked, every one, and the first
+  // has the focus: nothing is sent
+  const missing = missingOf(n, form);
+  if (missing.length) {
+    shown.all = true;
+    refreshShown();
+    missing[0].box.focus();
+    status(_("Fill in what is marked: {fields}.", { fields: [...new Set(missing.map((m) => legendOf(m.box)))].join(", ") }), true);
+    return;
+  }
+  // a field that is wrong (a name taken, a port another node's) is said
+  const wrong = [...form.elements].find((e) => e.validity && e.validity.customError);
+  if (wrong) {
+    status(wrong.validationMessage, true);
+    wrong.focus();
+    return;
+  }
+  const name = form.querySelector("#f-name").value;
+  const bad = nameError(name, draft ? "" : n.name);
+  if (bad) {
+    status(bad, true);
+    form.querySelector("#f-name").focus();
+    return;
+  }
+  const rename = !draft && name !== n.name;
+  if (rename && !confirm(_("Rename {was} to {name}?", { was: n.name, name }) + "\n\n" + renameNote(n, name))) return;
+  let body;
+  try {
+    body = formOf(n, form, false);
+  } catch (e) {
+    status(e.message, true);
+    return;
   }
   let renamed = false;
   try {
@@ -1225,16 +1523,23 @@ async function save(ev) {
       // its settings are saved under the new name after
       await api("POST", `/api/nodes/${encodeURIComponent(n.name)}/rename`, { name });
       renamed = true;
+      edits.delete(n.name);
       selected = name;
+      shown.name = name;
       canvas.setSelected(name);
       status(_("{was} renamed {name}", { was: n.name, name }));
     }
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
+    // what was typed is saved: the form is made of the node again
+    shown = null;
+    edits.delete(name);
     if (draft) {
-      await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
+      const d = draft;
+      drafts = drafts.filter((x) => x !== d);
       draft = null;
       selected = name;
-      canvas.setSelected(name);
+      syncCanvas();
+      await api("PUT", "/api/layout", { positions: { [name]: d.pos } });
     }
     status(_("{name} saved", { name }));
     if (res.key) showKey(name, res.key);
@@ -1254,6 +1559,8 @@ async function remove(name) {
   if (!confirm(_("Delete {name}? A node another one sends to stays. A template node's templates go with it; a display's slips and devices stay until it is added again.", { name }))) return;
   try {
     await api("DELETE", "/api/nodes/" + encodeURIComponent(name));
+    edits.delete(name);
+    if (shown && shown.name === name) shown = null;
     selected = null;
     status(_("{name} deleted", { name }));
     await load();
@@ -1521,12 +1828,18 @@ if (editable) $("key-copy").addEventListener("click", async () => {
 if (editable) document.addEventListener("keydown", (ev) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
   if (ev.key === "Escape" && draft) {
-    draft = null;
-    canvas.setDraft(null, null);
-    renderSidebar();
+    dropDraft(draft);
   } else if (ev.key === "Delete" && selected && !typing) {
     remove(selected);
   }
+});
+
+// Leaving the page with drafts, or changes not saved, asks first.
+if (editable) window.addEventListener("beforeunload", (ev) => {
+  keepShown();
+  if (!drafts.length && !edits.size) return;
+  ev.preventDefault();
+  ev.returnValue = "";
 });
 
 // a link from another page names a node: /topology#<name>

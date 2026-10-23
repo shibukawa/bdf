@@ -59,7 +59,7 @@ const (
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindHTTP, Title: "HTTP (push)", Role: docflow.RoleExit, Check: check, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindHTTP, Title: "HTTP (push)", Role: docflow.RoleExit, Check: check, Required: []docflow.Required{{Key: "url"}}, Send: send})
 }
 
 // headerRE is the shape of a header's name.

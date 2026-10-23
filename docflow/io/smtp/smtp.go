@@ -37,7 +37,18 @@ import (
 const KindSMTP = "smtp"
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindSMTP, Title: "Mail (SMTP)", Role: docflow.RoleExit, Check: Check, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindSMTP, Title: "Mail (SMTP)", Role: docflow.RoleExit, Check: Check, Required: Required(nil), Send: send})
+}
+
+// Required are the settings Check refuses a mail without (the server, the
+// sender, a recipient), when the settings of when have their values (a
+// notify node's via mail); always, with none.
+func Required(when map[string]string) []docflow.Required {
+	out := make([]docflow.Required, 0, 3)
+	for _, k := range []string{"url", "from", "recipients"} {
+		out = append(out, docflow.Required{Key: k, If: when})
+	}
+	return out
 }
 
 // Check checks the settings of a mail: the server (URL), the sender

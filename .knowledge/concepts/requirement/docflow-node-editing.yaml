@@ -1,0 +1,229 @@
+id: requirement:docflow-node-editing
+type: requirement
+title: Docflow のトポロジーエディタで、保存前のノードを離れても続きを編集でき、必須の欄の未入力が見える
+summary: >-
+  2026-10-23 利用者の報告。今のエディタは、パレットから置いたノードを Add（保存）を押して初めて作る。Add を押さずに他のノードを触ると、
+  置いたノードは「not saved yet」の絵のままキャンバスに残るが、もう選べず、二度と編集できない（利用者には編集できない状態で保存された
+  ように見える）。利用者の要件は 2 つ：(1) この状態のノードに触ったら編集を再開できる、(2) 一度選択して blur などした後は、必須の欄が
+  未入力なら警告色のボーダーで囲むなどして、どこを入力すればよいかわかる。原因はコードで確かめた（facts.observed_cause）。
+  同日、利用者が問いに Claude の暫定案で答え（open_questions）、ブランチ claude/edit-feature-improvements-787830 に実装した（facts.implementation）。
+lifecycle: active
+authority: authored
+aliases:
+- 下書き
+- 下書きのノード
+- draft node
+- not saved yet
+- 編集再開
+- resume editing
+- 必須の欄
+- required field
+- 未入力
+- 警告色
+- input-warning
+- touched
+- blur
+constraints:
+- 下書き（Add を押していないノード）はサーバーに無い。PUT /api/nodes と PUT /api/layout は Add のときだけ。保存済みのように見せない（破線の枠と「not saved yet」は残す）
+- 下書きの絵は自分の題（無ければ new <kind>）を出す。選んでいる別のノードの題を借りない（facts.observed_cause.ghost_label）
+- 下書きに触れる（クリック）とサイドバーがその下書きを開き、離れる前に入れた値（名前・題・説明・種類ごとの欄）がそのまま入っている。ドラッグで動かした位置も残る
+- 確かめの本元は今のとおりサーバー（PUT の 400・409 の理由を画面に出す。requirement:print-manager-console の制約）。エディタの示しは送る前の案内で、サーバーの確かめを代わりにしない
+- 必須の欄の未入力は警告色（daisyUI の input-warning・select-warning と text-warning の文）。値の誤り（名前の空白・使えない文字・重なり）は今の赤（input-error）のまま。2 つを色で分ける
+- 示しは触れた欄から：フォーカスして離れた（blur）欄だけを示す（入力して空に戻しただけでは示さない。値を入れれば示しは消える）。開いたばかりのフォームを最初から黄色にしない。Add・Save を押したときは触れていない必須の欄も全部示し、最初の欄にフォーカスを移して、サーバーに送らない。離れたノード・下書きを開き直したときも全部示す（一度選んで離れた）
+- 示しには文を添える（「必須」と、何を入れるか）。色だけに頼らない。aria-invalid と aria-describedby で欄と文を結ぶ
+- 文は英語と日本語の両方（requirement:docflow の UI の言語：_() と ja.js）
+non_goals:
+- 下書きをサーバーに置くこと（版の管理・下書きの公開は requirement:print-manager-console の non_goals と open_questions.node-edit-live のまま deferred）
+- 下書きに辺をつなぐこと。辺はサーバーにあるノードの間だけ（Add の後につなぐ。今のまま）
+- 自動保存（離れたときに勝手に PUT する）。サーバーの確かめで断られたときの扱いが二重になる
+- エディタの種類ごとの専用の入力欄を新しく作ること（JSON の設定欄の種類は open_questions.json-settings で示し方だけ決める）
+- 下書きと直しかけをページの読み直しのあとまで残すこと（open_questions.draft-reload の (a)。離れる前にブラウザが聞く）
+capabilities:
+  draft-resume:
+    state: implemented
+    about: capability:docflow/editor-draft-resume
+    evidence: {path: cmd/docflow/public/canvas.js, locator: 'drafts の配列、setDrafts、onSelectDraft、endDrag の case "move"（draft のクリック）'}
+  draft-values-kept:
+    state: implemented
+    about: capability:docflow/editor-draft-values
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'keepShown・snapshot・restoredForm・sidebarForm（下書きの kept）'}
+  multiple-drafts:
+    state: implemented
+    about: capability:docflow/editor-multiple-drafts
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'パレットの click（drafts.push、id は +<n>）、dropDraft'}
+  saved-node-edits-kept:
+    state: implemented
+    about: capability:docflow/editor-unsaved-edits
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'edits（名前ごと、base つき）、restoredForm の 3 方向の合わせ、Revert の注記'}
+  required-marking:
+    state: implemented
+    about: capability:docflow/editor-required-marking
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'missingOf・missingSettings・markRequired・refreshShown、save の先の検査（form は noValidate）'}
+  kind-required:
+    state: implemented
+    about: capability:docflow/kind-required
+    evidence: {path: docflow/kind.go, locator: 'Kind.Required・Required・KindInfo.Required（smtp・http・s3・s3-trigger・notify が登録）'}
+  canvas-marks:
+    state: implemented
+    about: capability:docflow/editor-pending-marks
+    evidence: {path: cmd/docflow/public/canvas.js, locator: 'pendingMarks（直しかけの琥珀の破線の枠と、空の必須の欄の数のバッジ）、marksOf'}
+  leave-guard:
+    state: implemented
+    about: capability:docflow/editor-leave-guard
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'beforeunload（下書きか直しかけがあれば preventDefault）'}
+acceptance:
+  e1-resume:
+    text: >-
+      パレットから置いた下書きに名前・題・種類の欄の一部を入れ、Add を押さずに別のノードをクリックする。キャンバスの下書きは自分の題と
+      「not saved yet」のまま残り、それをクリックするとサイドバーが入れた値のまま開き、続きを入れて Add で作れる（位置もそのまま）
+    verified_by: [editor-browser]
+  e2-draft-cancel:
+    text: 下書きを選んだ状態の Cancel と Esc で、その下書きだけがキャンバスから消える。選ばれていない下書きは Esc で消えない
+    verified_by: [editor-browser]
+  e3-touched:
+    text: >-
+      必須の欄にフォーカスして何も入れずに離れると、その欄が警告色のボーダーと「必須」の文で示され、値を入れると消える。
+      触れていない欄は示さない。名前の誤り（空白・文字・重なり）は今のとおり赤
+    verified_by: [editor-browser]
+  e4-submit:
+    text: Add・Save を押したとき未入力の必須の欄があれば、全部が警告色で示され、最初の欄にフォーカスが移り、PUT は送られない
+    verified_by: [editor-browser]
+  e5-resume-marks:
+    text: >-
+      下書き・直しかけのノードを離れて戻ったとき、空の必須の欄が全部示される（一度選んで離れた扱い）。離れている間はキャンバスにその数のバッジ。
+      同じノードのままトポロジーを読み直したときは、示していた欄だけを示し続ける
+    verified_by: [editor-browser]
+  e6-languages:
+    text: 新しい文（「必須」、下書きの印、直しかけの注記と Revert、送れないときの文）が英語と日本語の両方で出る
+    verified_by: [editor-browser, js-catalog]
+  e7-saved-node-edits:
+    text: >-
+      保存済みのノードを変えて Save せずに離れると、キャンバスで琥珀の破線の枠。戻ると変えた値と「変更したまま保存していません」の注記と Revert。
+      その間にそのノードから引いた辺は、Save で消えない（変えた欄だけを重ねる）
+    verified_by: [editor-browser]
+  e8-kind-required:
+    text: GET /api/kinds の required が、その種類の Check が断る設定と一致する（smtp・http・s3・s3-trigger・notify の 3 通り）
+    verified_by: [required-tests]
+verification:
+  editor-browser:
+    state: passed
+    method: manual
+    test: >-
+      pw dev の /topology（in-app のブラウザ、Ada Admin）で、プリンタの下書き（題・名前を入れ host を空のまま blur → 琥珀と文、キャンバスのバッジ 1）を離れ、
+      アーカイブの下書きを足して 2 つ並べ、プリンタの下書きをクリック → 値が戻り host が示される → host を入れて Add（下書きの位置に作られ、もう 1 つの下書きは残る）。
+      保存済みのプリンタの題を変えて離れる → 枠、戻る → 注記、Revert で元に戻る。メール（SMTP）の下書きで Add → 設定の欄が琥珀で url, from, recipients、
+      フォーカスがそこへ、送られない。壊れた JSON で blur → 赤。キュー q1 の題を変えたまま q1 → laser-3f の辺を引く → サーバーの to に laser-3f、フォームの題はそのまま。
+      選んだ下書きの Escape で消え、beforeunload は下書きがある間だけ preventDefault。英語のページで Add → Name と Store が示され「Fill in what is marked: Name, Store.」。
+      in-app のブラウザの navigate では離れる前の問いが出なかった（ブラウザがその移動で問わない。handler は合成イベントで確かめた）
+    authority: observed
+  required-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/io/...（各包みの TestRequired。flowtest.Env.Required が、正しいノードを置き、Required の鍵を 1 つずつ抜いて ErrInvalid を確かめる）
+    authority: observed
+    evidence: {path: docflow/internal/flowtest/flowtest.go, locator: Env.Required}
+  js-catalog:
+    state: passed
+    method: unit
+    test: go test ./cmd/docflow（public_test.go：ja.js の訳の過不足、dist の同一）
+    authority: observed
+open_questions:
+  saved-node-edits:
+    text: >-
+      保存済みのノードを直しかけて Save を押さずに別のノードを触ると、今は直しかけが黙って消える。下書きと同じに扱うか。
+      (a) 直しかけを残し、キャンバスに「直しかけ」の印、戻ると続き、(b) 離れるときに「変更を捨てますか」と聞く、(c) 今のまま（下書きだけ直す）
+    state: answered
+    resolution: 2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。暫定（Claude）：(a)。下書きと同じ仕組み（フォームの値と触れた欄をノードごとに持つ）で済み、「保存したつもりが消えた」が同じ根の事故。下書きだけに絞るなら (c)
+  multiple-drafts:
+    text: >-
+      下書きがあるままパレットからもう 1 つ置いたとき。(a) 下書きを何個でも持てる（それぞれ触れると続き）、(b) 1 つだけで、前の下書きを
+      捨ててよいか聞く、(c) 1 つだけで、前の下書きを開き直す
+    state: answered
+    resolution: 暫定（Claude）：(a)。Blueprint のように先に何個か置いてから順に埋める使い方ができ、捨てる問いも要らない。下書きはクライアントの ID で見分ける
+  draft-reload:
+    text: 下書き（と直しかけ）をページの読み直しのあとまで残すか。(a) ページの中だけで、離れる・閉じるときにブラウザの問い（beforeunload）、(b) sessionStorage にも置き、同じタブで読み直しても戻る、(c) サーバーに置く
+    state: answered
+    resolution: 2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。暫定（Claude）：(a)。(c) は non_goals（版の管理と一緒）。(b) は後から足せる
+  required-source:
+    text: >-
+      どの欄が必須かをエディタがどこから知るか。今は欄を作るところの HTML の required（名前、CUPS (sink) の host と queue、S3 Trigger の bucket、
+      archive の store、printer の host、テンプレートの id とファイル）だけで、smtp の from・recipients などはサーバーの Check だけが知る。
+      (a) 欄を作るところの required をそろえる（エディタの中だけ）、(b) GET /api/kinds の KindInfo に必須の設定の名前を足し、エディタはそれで示す、(c) サーバーに確かめだけの要求（送らずに PUT の検査）を足し、blur ごとに聞く
+    state: answered
+    resolution: >-
+      2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。
+      暫定（Claude）：専用の欄は (a)、JSON の設定欄の種類は (b) の静的な名前。条件つきの必須（notify の slack なら credential）は
+      サーバーの理由のまま出す。(c) は名前の重なりのような正確な確かめにはよいが、Check の誤りが欄の名前を持たない（文だけ）ので後で
+  json-settings:
+    text: 設定を JSON の欄で書く種類（smtp・http・notify・s3・render など）で、足りない鍵をどう示すか
+    state: answered
+    resolution: 2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。暫定（Claude）：JSON の欄そのものを警告色にし、下に足りない鍵の名前（from、recipients）を並べる。JSON として読めないときは赤
+  canvas-marker:
+    text: 必須の未入力がある下書き・直しかけのノードに、キャンバスの絵の上でも印を出すか（警告色の点と数など）
+    state: answered
+    resolution: 2026-10-23 利用者「Implement it with the provisional answers to the open questions (1 = a, 2 = a)」で暫定案のまま実装。暫定（Claude）：出す。どのノードに戻ればよいかがキャンバスで分かる。サイドバーの示しだけでよければ省く（実装の好み）
+  warning-color:
+    text: 未入力を示す色
+    state: answered
+    resolution: 2026-10-23 利用者「警告色でボーダーをかこう」。daisyUI の warning（黄）を使い、値の誤りの error（赤）と分ける形は Claude の案
+relations:
+- relation: refines
+  to: requirement:print-manager-console
+- relation: related_to
+  to: requirement:docflow
+facts:
+  request:
+    text: >-
+      2026-10-23 利用者「今の編集機能は重大な欠点があります。今はおいて保存ボタンを押して初めて決定するが、この時に保存を押さないで他のノードを
+      触ると、二度と編集できない状態で保存されてしまう。この状態のノードに触ったら編集再開できるように。あと、一度選択してblurなどしたあとは、
+      必須属性が未入力だったらわかるように警告色でボーダーをかこうなどどこを入力すればいいかわかるようにして欲しい」
+  observed_cause:
+    base: main c944212（PR 150 まで）の cmd/docflow/public/topology.js と canvas.js を読んだ。ブラウザで再現はしていない
+    two_drafts: >-
+      下書きはエディタ（topology.js の draft）とキャンバス（canvas.js の draft・draftPos）の 2 か所にある。パレットは canvas.setDraft で両方を立てるが、
+      別のノードのクリックは canvas の endDrag が selected を変えて onSelect を呼ぶだけで、onSelect は topology.js の draft を null にする。
+      キャンバスの draft は消えない（canvas.setSelected は保存・改名と、ページを開いたときの #<name> だけで呼ばれる）
+    ghost_unselectable: >-
+      キャンバスの下書きの絵は pointerdown で startDrag(ev, null) を呼び、endDrag の case "move" は !d.node なら何もしない。ドラッグで動かせるが、
+      クリックで選べない。Esc と Cancel は topology.js の draft があるときだけ働くので、絵は読み直すまで残る（サーバーには無い）
+    ghost_label: >-
+      下書きの絵の題は draftLabel（#f-title、無ければ #f-name の値）で、別のノードを選ぶとそのノードのフォームの題を出す。これが
+      「保存されてしまった」ように見える一因
+    values_in_dom: 下書きが持つのは kind・name・title だけで、入れた値はフォームの DOM にしかない。renderSidebar が別のノードのフォームを作ると値は消える。保存済みのノードの直しかけも同じ
+    required_today: >-
+      必須の示しは名前の liveCheck（入力の後に input-error の赤と文）だけ。ほかの required の欄は送ったときのブラウザの吹き出しだけで、
+      ボーダーは変わらない。JSON の設定欄の種類の必須（smtp の from・recipients、notify の slack の credential）はサーバーの Check の 400 の文だけ
+  implementation:
+    branch: claude/edit-feature-improvements-787830（2026-10-23。コミット前）
+    editor: >-
+      topology.js：drafts（{id, kind, pos, kept}）と draft、edits（名前 → 写し）、shown（サイドバーのフォームの持ち主、base・touched・all・restored・dirty・marked）。
+      show・keepShown・snapshot（formOf の lenient と id ごとの生の値）・restoredForm（変えた欄だけを今のノードに重ね、input・change を投げて検査とプレビューを動かす）・sidebarForm・refreshShown。
+      save は formOf（読み手は全部フォームを引数に取る：picked・rulesOf・casesOf・metaOf・composeURL・cupsQueueURL）の前に missingOf と customError を確かめる。
+      liveCheck は空の値を誤りにしない（必須の示しに任せる）。名前の空の文は data-need
+    canvas: canvas.js：drafts を描き、クリックで onSelectDraft、選択の輪、pendingMarks（直しかけの琥珀 #d97706 の破線の枠、空の必須の数のバッジ）。setDraft・draftPos は setDrafts に
+    server: docflow.Kind.Required（Key と If）と KindInfo.required。smtp.Required(when) を notify が via=mail で使う。flowtest.Env.Required と各包みの TestRequired
+    docs: cmd/docflow/help/{en,ja}/topology.md の「What is not saved yet」（#unsaved）。ja.js に新しい文。app.css を作り直し（input-warning・select-warning・textarea-warning・textarea-error・alert-soft）
+  delivery:
+    next_milestone: 名前は付けず、この要件の e1〜e8 を 1 つの変更で入れた
+    outcome: 置いたノードを離れても戻って続きを入れられ、Add・Save の前にどの欄が足りないかが見える
+    approaches:
+      client_drafts: >-
+        推奨。下書きをエディタの配列 drafts（{id, kind, pos, values, touched}）にし、キャンバスは drafts を描いて onSelect に下書きの ID も渡す。
+        サイドバーを離れるとき（onSelect・パレット）にフォームの値（f-* の id ごと）と触れた欄を下書きに写し、開くときに戻す。
+        保存済みのノードの直しかけも同じ写しをノードの名前で持てる（open_questions.saved-node-edits）。サーバーは変わらない
+      css_user_invalid: >-
+        示しを CSS の :user-invalid（daisyUI 5 の validator）に任せる。軽いが、フォームを作り直すと「触れた」が消える（e5 が成り立たない）。
+        JSON の鍵の不足も表せない。示しの見た目の部品としてだけ使える
+      server_drafts: >-
+        下書きをサーバーのノード（draft の印つき）にする。読み直しや別のブラウザでも残り、下書きに辺もつなげるが、route が下書きを避ける必要があり、
+        版の管理（node-edit-live、deferred）に踏み込む。今は採らない
+    files: cmd/docflow/public/topology.js（下書き・フォームの写し・示し）、canvas.js（下書きの配列、選択、印）、public/ja.js（日本語の文）、cmd/docflow/help/{en,ja} の editor の節
+history:
+  reported:
+    summary: >-
+      2026-10-23 利用者の報告（facts.request）を /knowledge-memory で整理した。main c944212 の topology.js と canvas.js を読んで原因（facts.observed_cause）を書き、
+      受け入れの条件（acceptance）と、利用者に確かめる問い（open_questions）と Claude の暫定の答えを立てた。実装はまだ
+  implemented:
+    summary: >-
+      2026-10-23 利用者が暫定案のまま実装を頼み（1 = a、2 = a）、同じ日に実装した。e5 は「戻ったら全部示す」に改めた（利用者の「一度選択して blur」を、
+      ノードを一度選んで離れたことと読んだ）。保存済みのノードの直しかけは、辺のドラッグとぶつからないよう変えた欄だけを重ねる

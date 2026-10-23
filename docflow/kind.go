@@ -71,6 +71,10 @@ type Kind struct {
 	// (and, of an entry, those of every entry). An error of ErrInvalid is
 	// the caller's.
 	Check func(ctx context.Context, m *Manager, in Node, n *Node) error
+	// Required are the settings Check refuses a node without, for the
+	// editor to mark before the node is put: those of a kind set as JSON
+	// (an adapter's) at least.
+	Required []Required
 	// Ready tells whether the engine can send to a node of an exit now
 	// (a printer a branch fetches from: not yet). Its error stops a send
 	// for good.
@@ -521,6 +525,16 @@ type KindInfo struct {
 	// Discovers tells a kind whose far side is asked what is there
 	// (Kind.Discover).
 	Discovers bool `json:"discovers,omitempty"`
+	// Required are Kind.Required.
+	Required []Required `json:"required,omitempty"`
+}
+
+// Required is a setting a node must have: the JSON key of a field of
+// Node, with a value (not empty), when the settings of If have the values
+// given (a notify node by slack names a credential); always, with no If.
+type Required struct {
+	Key string            `json:"key"`
+	If  map[string]string `json:"if,omitempty"`
 }
 
 // KindInfos are the kinds registered, as the API tells them.
@@ -529,7 +543,7 @@ func KindInfos() []KindInfo {
 	out := make([]KindInfo, 0, len(ks))
 	for _, k := range ks {
 		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Stocks: k.Stocks, Makes: k.Makes, Fixed: k.Fixed,
-			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name), Discovers: k.Discover != nil})
+			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name), Discovers: k.Discover != nil, Required: k.Required})
 	}
 	return out
 }

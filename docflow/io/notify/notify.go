@@ -40,8 +40,16 @@ const (
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindNotify, Title: "Notify", Role: docflow.RoleRoute, PassesOn: true, Check: check, Step: step})
+	docflow.RegisterKind(docflow.Kind{Name: KindNotify, Title: "Notify", Role: docflow.RoleRoute, PassesOn: true, Check: check, Required: required, Step: step})
 }
+
+// required are the settings check refuses a node without: how it
+// notifies, and what that needs.
+var required = append([]docflow.Required{
+	{Key: "via"},
+	{Key: "credential", If: map[string]string{"via": ViaSlack}},
+	{Key: "url", If: map[string]string{"via": ViaHTTP}},
+}, smtp.Required(map[string]string{"via": ViaMail})...)
 
 func check(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {
 	n.To = docflow.CleanNames(in.To)

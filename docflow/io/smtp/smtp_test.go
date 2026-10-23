@@ -119,3 +119,9 @@ func TestMailFails(t *testing.T) {
 		}
 	}
 }
+
+// The settings the editor marks as required are those Check refuses a
+// mail without.
+func TestRequired(t *testing.T) {
+	flowtest.New(t, nil).Required(docflow.Node{Name: "mail", Kind: smtp.KindSMTP, URL: "smtp://127.0.0.1:2525", From: "d@example.com", Recipients: []string{"a@example.com"}})
+}
