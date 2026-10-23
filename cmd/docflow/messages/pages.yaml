@@ -1,0 +1,648 @@
+# The texts of the pages (handlers/pages.pw.html), in English and
+# Japanese. pw generate compiles them into this package and checks every
+# {t id} of the templates against them: a message missing in a language,
+# or one the templates do not name, stops it. The Japanese follows the
+# manual's words (help/ja): ノード, エッジ, ジョブ, 伝票, 配送, ティック.
+# The scripts' texts are public/ja.js.
+
+# The bar of every page, and the switch of the language.
+nav-jobs:
+  locales:
+    en: "Jobs"
+    ja: "ジョブ"
+nav-topology:
+  locales:
+    en: "Topology"
+    ja: "トポロジー"
+nav-admin:
+  locales:
+    en: "Admin"
+    ja: "管理"
+nav-audit:
+  locales:
+    en: "Audit"
+    ja: "監査"
+nav-help:
+  locales:
+    en: "Help"
+    ja: "ヘルプ"
+nav-help-title:
+  locales:
+    en: "The manual"
+    ja: "マニュアル"
+badge-admin:
+  locales:
+    en: "Admin"
+    ja: "管理者"
+sign-out:
+  locales:
+    en: "Sign out"
+    ja: "サインアウト"
+language-switch:
+  locales:
+    en: "The language of the pages"
+    ja: "ページの言語"
+
+# The top page.
+signin-lead:
+  locales:
+    en: "A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives."
+    ja: "ソフトウェアで定義する文書のネットワークです。文書は仮想プリンタと API のエンドポイントから入り、組み立てたノードを流れて、ディスプレイボード、プリンタ、アーカイブに行き着きます。"
+signin-button:
+  locales:
+    en: "Sign in"
+    ja: "サインイン"
+signin-with:
+  locales:
+    en: "with your organization's account"
+    ja: "組織のアカウントで"
+signin-none:
+  locales:
+    en: "No sign-in is configured (AUTH_OIDC_ISSUER): nobody signs in. Development only."
+    ja: "サインインが設定されていません（AUTH_OIDC_ISSUER）。誰もサインインしません。開発用です。"
+signin-device:
+  locales:
+    en: "This is a display board's device"
+    ja: "これはディスプレイボードのデバイスです"
+
+# The page of a role the person does not have.
+forbidden-title:
+  locales:
+    en: "Forbidden · BDF Docflow"
+    ja: "権限がありません · BDF Docflow"
+forbidden-heading:
+  locales:
+    en: "Not your page"
+    ja: "このページは開けません"
+forbidden-text:
+  params: ["name string", "role string"]
+  locales:
+    en: "{name} does not have the role {role}. Your jobs and your groups' are on the Jobs page."
+    ja: "{name} には役割 {role} がありません。自分のジョブと自分のグループのジョブは、ジョブのページにあります。"
+
+# The columns of the tables of jobs.
+col-number:
+  locales:
+    en: "No."
+    ja: "番号"
+col-name:
+  locales:
+    en: "Name"
+    ja: "名前"
+col-sent-to:
+  locales:
+    en: "Sent to"
+    ja: "送り先"
+col-sent-by:
+  locales:
+    en: "Sent by"
+    ja: "送り手"
+col-group:
+  locales:
+    en: "Group"
+    ja: "グループ"
+col-received:
+  locales:
+    en: "Received"
+    ja: "受信"
+col-state:
+  locales:
+    en: "State"
+    ja: "状態"
+col-route:
+  locales:
+    en: "Route"
+    ja: "経路"
+col-source:
+  locales:
+    en: "Source"
+    ja: "入口"
+refresh:
+  locales:
+    en: "Refresh"
+    ja: "更新"
+close:
+  locales:
+    en: "Close"
+    ja: "閉じる"
+
+# The Jobs page.
+jobs-title:
+  locales:
+    en: "Jobs · BDF Docflow"
+    ja: "ジョブ · BDF Docflow"
+jobs-print-heading:
+  locales:
+    en: "Print a document"
+    ja: "文書を印刷する"
+jobs-print-note:
+  locales:
+    en: "PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to."
+    ja: "PDF、Office 文書、画像、.bdf。選んだノードから流れます。並ぶのは自分が送れるノードです。"
+jobs-name-placeholder:
+  locales:
+    en: "job name (the file's)"
+    ja: "ジョブ名（ファイル名）"
+jobs-print:
+  locales:
+    en: "Print"
+    ja: "印刷"
+jobs-all:
+  locales:
+    en: "All jobs"
+    ja: "すべてのジョブ"
+jobs-mine:
+  locales:
+    en: "My jobs and my groups'"
+    ja: "自分のジョブと自分のグループのジョブ"
+jobs-reprint-note:
+  locales:
+    en: "Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to."
+    ja: "再印刷は、文書をもう一度、自分の新しいジョブとして、元のノードか、送れるほかのノードに送ります。"
+
+# The administrator's tabs.
+tab-apps:
+  locales:
+    en: "Apps"
+    ja: "アプリ"
+tab-inboxes:
+  locales:
+    en: "Inboxes"
+    ja: "インボックス"
+tab-deliveries:
+  locales:
+    en: "Deliveries"
+    ja: "配送"
+
+# The audit log.
+audit-title:
+  locales:
+    en: "Audit · BDF Docflow"
+    ja: "監査 · BDF Docflow"
+audit-heading:
+  locales:
+    en: "Audit log"
+    ja: "監査ログ"
+audit-note:
+  locales:
+    en: "Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first."
+    ja: "サインイン、トポロジー・キー・テンプレートの変更、デバイス、エンドポイントが拒否した文書、インボックスで人がしたこと、取り消しです。新しい順に並びます。"
+audit-when:
+  locales:
+    en: "When"
+    ja: "日時"
+audit-who:
+  locales:
+    en: "Who"
+    ja: "誰が"
+audit-action:
+  locales:
+    en: "Action"
+    ja: "操作"
+audit-subject:
+  locales:
+    en: "Subject"
+    ja: "対象"
+audit-detail:
+  locales:
+    en: "Detail"
+    ja: "詳細"
+audit-jobs-heading:
+  locales:
+    en: "Recent jobs and their routes"
+    ja: "最近のジョブとその経路"
+
+# The display board (/tablet).
+tablet-title:
+  locales:
+    en: "Display board"
+    ja: "ディスプレイボード"
+worker:
+  locales:
+    en: "Worker"
+    ja: "作業者"
+tablet-worker-placeholder:
+  locales:
+    en: "name"
+    ja: "名前"
+tablet-enroll-heading:
+  locales:
+    en: "Enroll this device"
+    ja: "このデバイスを登録する"
+tablet-enroll-note:
+  locales:
+    en: "Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display."
+    ja: "管理者が作った登録コードを入力します。登録したデバイスだけが、そのディスプレイの文書を見られます。"
+enrollment-code:
+  locales:
+    en: "Enrollment code"
+    ja: "登録コード"
+tablet-device-name:
+  locales:
+    en: "Device name"
+    ja: "デバイス名"
+tablet-device-placeholder:
+  locales:
+    en: "e.g. tablet at the shipping dock"
+    ja: "例: 出荷口のタブレット"
+tablet-enroll:
+  locales:
+    en: "Enroll"
+    ja: "登録"
+tablet-open:
+  locales:
+    en: "Open"
+    ja: "未完了"
+tablet-ended:
+  locales:
+    en: "Done and canceled"
+    ja: "完了・取り消し"
+tablet-empty:
+  locales:
+    en: "No documents"
+    ja: "文書はありません"
+tablet-back:
+  locales:
+    en: "← Board"
+    ja: "← ボード"
+tablet-print:
+  locales:
+    en: "Print here"
+    ja: "ここで印刷"
+tablet-done:
+  locales:
+    en: "Done"
+    ja: "完了"
+
+# The topology: the palette's headings, and its kinds of node (the same
+# names as KINDS of public/admin.js).
+palette-source:
+  locales:
+    en: "Source"
+    ja: "ソース"
+palette-control:
+  locales:
+    en: "Control"
+    ja: "制御"
+palette-convert:
+  locales:
+    en: "Convert"
+    ja: "変換"
+palette-sink:
+  locales:
+    en: "Sink"
+    ja: "シンク"
+kind-endpoint:
+  locales:
+    en: "Endpoint"
+    ja: "エンドポイント"
+kind-endpoint-note:
+  locales:
+    en: "a REST entry for applications"
+    ja: "アプリケーション向けの REST の入口"
+kind-cups:
+  locales:
+    en: "CUPS server (source)"
+    ja: "CUPS サーバー（ソース）"
+kind-cups-note:
+  locales:
+    en: "the IPP entry: computers print to it, on a port of its own"
+    ja: "IPP の入口。コンピュータが専用のポートで印刷する"
+kind-s3-trigger:
+  locales:
+    en: "S3 Trigger"
+    ja: "S3 トリガー"
+kind-s3-trigger-note:
+  locales:
+    en: "takes the objects an S3 event names"
+    ja: "S3 のイベントが指すオブジェクトを受け取る"
+kind-queue:
+  locales:
+    en: "Queue"
+    ja: "キュー"
+kind-queue-note:
+  locales:
+    en: "forwards to every node it points to"
+    ja: "指すすべてのノードへ送る"
+kind-class:
+  locales:
+    en: "Class"
+    ja: "クラス"
+kind-class-note:
+  locales:
+    en: "one member in turn, or the first"
+    ja: "メンバーの 1 つへ順番に、または先頭へ"
+kind-filter:
+  locales:
+    en: "Filter"
+    ja: "フィルタ"
+kind-filter-note:
+  locales:
+    en: "sends on by rules on what a job is, and its metadata"
+    ja: "ジョブの性質とメタデータのルールで振り分ける"
+kind-inbox:
+  locales:
+    en: "Inbox"
+    ja: "インボックス"
+kind-inbox-note:
+  locales:
+    en: "held until a person releases it"
+    ja: "人が送り出すまで留める"
+kind-notify:
+  locales:
+    en: "Notify"
+    ja: "通知"
+kind-notify-note:
+  locales:
+    en: "tells Slack, a mail or a webhook; failures come along on_error"
+    ja: "Slack、メール、Webhook に知らせる。失敗は on_error で届く"
+kind-template:
+  locales:
+    en: "Template"
+    ja: "テンプレート"
+kind-template-note:
+  locales:
+    en: "fills a template with data, into a .bdf document"
+    ja: "データでテンプレートを埋めて .bdf 文書にする"
+kind-convert:
+  locales:
+    en: "Convert"
+    ja: "変換"
+kind-convert-note:
+  locales:
+    en: "makes a .bdf document of a file received as it is"
+    ja: "受け取ったままのファイルから .bdf 文書を作る"
+kind-sign:
+  locales:
+    en: "Sign"
+    ja: "署名"
+kind-sign-note:
+  locales:
+    en: "signs a .bdf document as a witness of who sent it"
+    ja: "誰が送ったかの証人として .bdf 文書に署名する"
+kind-render:
+  locales:
+    en: "Render"
+    ja: "描画"
+kind-render-note:
+  locales:
+    en: "draws a .bdf document as a PDF, or a page as a PNG"
+    ja: ".bdf 文書を PDF に、またはページを PNG に描く"
+kind-display:
+  locales:
+    en: "Display"
+    ja: "ディスプレイ"
+kind-display-note:
+  locales:
+    en: "shown on the devices enrolled there"
+    ja: "そこに登録したデバイスに表示する"
+kind-printer:
+  locales:
+    en: "Printer"
+    ja: "プリンタ"
+kind-printer-note:
+  locales:
+    en: "printed on paper"
+    ja: "紙に印刷する"
+kind-cups-out:
+  locales:
+    en: "CUPS server (sink)"
+    ja: "CUPS サーバー（シンク）"
+kind-cups-out-note:
+  locales:
+    en: "printed to a queue of a CUPS server, over IPP"
+    ja: "CUPS サーバーのキューに IPP で印刷する"
+kind-archive:
+  locales:
+    en: "Archive"
+    ja: "アーカイブ"
+kind-archive-note:
+  locales:
+    en: "written once, never changed"
+    ja: "1 度だけ書き、変更しない"
+kind-sink:
+  locales:
+    en: "Sink"
+    ja: "シンク"
+kind-sink-note:
+  locales:
+    en: "keeps the latest documents, to look at"
+    ja: "最新の文書を見られるように保持する"
+kind-export:
+  locales:
+    en: "HTTP (pull)"
+    ja: "HTTP (pull)"
+kind-export-note:
+  locales:
+    en: "fetched by applications and people from an inbox or an archive"
+    ja: "インボックスかアーカイブのものを、アプリケーションや人が取りに来る"
+kind-smtp:
+  locales:
+    en: "Mail (SMTP)"
+    ja: "メール（SMTP）"
+kind-smtp-note:
+  locales:
+    en: "mails it as an attachment"
+    ja: "添付ファイルとしてメールで送る"
+kind-s3:
+  locales:
+    en: "S3"
+    ja: "S3"
+kind-s3-note:
+  locales:
+    en: "written to a bucket, once"
+    ja: "バケットに 1 度だけ書く"
+kind-http:
+  locales:
+    en: "HTTP (push)"
+    ja: "HTTP (push)"
+kind-http-note:
+  locales:
+    en: "sent to a web service, as the body or as multipart"
+    ja: "Web サービスに送る。ボディそのままか multipart で"
+
+# The topology page.
+topology-title:
+  locales:
+    en: "Topology · BDF Docflow"
+    ja: "トポロジー · BDF Docflow"
+topology-add:
+  locales:
+    en: "+ Add a node"
+    ja: "+ ノードを追加"
+zoom-out:
+  locales:
+    en: "Zoom out"
+    ja: "縮小"
+zoom-fit:
+  locales:
+    en: "Fit"
+    ja: "全体"
+zoom-fit-title:
+  locales:
+    en: "Fit the topology in the view"
+    ja: "トポロジー全体を表示に収める"
+zoom-in:
+  locales:
+    en: "Zoom in"
+    ja: "拡大"
+topology-openapi-title:
+  locales:
+    en: "The OpenAPI document of every endpoint and HTTP (pull) node"
+    ja: "すべてのエンドポイントと HTTP (pull) ノードの OpenAPI 文書"
+topology-edit-note:
+  locales:
+    en: "Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them (a node that would not take what the edge carries fades, and the wire turns red over it); click an edge to remove it; click a node to edit it in the sidebar."
+    ja: "背景をドラッグして移動、ホイールかピンチで拡大縮小します。ノードはドラッグで動かし、右側のポートから別のノードへドラッグしてつなぎます（エッジが運ぶものを受け取らないノードは薄くなり、その上では線が赤くなります）。エッジをクリックすると外せます。ノードをクリックするとサイドバーで編集できます。"
+topology-view-note:
+  locales:
+    en: "The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may."
+    ja: "文書が流れるネットワークです。数と点は、自分が見られるジョブ（自分のものと自分のグループのもの）です。背景をドラッグして移動、ホイールかピンチで拡大縮小します。ノードをクリックすると、そこのジョブが見られ、送れるノードならそこで印刷できます。"
+enroll-modal-note:
+  locales:
+    en: "Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once."
+    ja: "デバイスで URL を開くか、そこでコードを読み取ります。デバイスは自分のキーを作り、このディスプレイに自分を登録します。コードは 1 度だけ使えます。"
+key-modal-heading:
+  locales:
+    en: "Endpoint key"
+    ja: "エンドポイントのキー"
+key-modal-note:
+  locales:
+    en: "It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one."
+    ja: "表示されるのは今だけです。エンドポイントに送るアプリケーションにコピーしてください。新しいキーが要るときは回します。"
+copy:
+  locales:
+    en: "Copy"
+    ja: "コピー"
+
+# The apps.
+apps-title:
+  locales:
+    en: "Apps · BDF Docflow"
+    ja: "アプリ · BDF Docflow"
+apps-note:
+  rich: true
+  locales:
+    en: "Applications with credentials of their own. A backend takes a token at <token>POST /oauth/token</token> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <authorize>/oauth/authorize</authorize> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts."
+    ja: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで <token>POST /oauth/token</token> からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたエンドポイントに送り、自分を挙げた HTTP (pull) ノードを読みます（スコープ export）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを <authorize>/oauth/authorize</authorize>（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人として HTTP (pull) ノードを読みます。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"
+apps-id:
+  locales:
+    en: "Id"
+    ja: "ID"
+apps-col-title:
+  locales:
+    en: "Title"
+    ja: "題名"
+apps-scopes:
+  locales:
+    en: "Scopes"
+    ja: "スコープ"
+apps-where:
+  locales:
+    en: "Endpoints / redirect URIs"
+    ja: "エンドポイント / リダイレクト URI"
+apps-last-used:
+  locales:
+    en: "Last used"
+    ja: "最終使用"
+apps-id-placeholder:
+  locales:
+    en: "id (erp)"
+    ja: "ID（erp）"
+apps-title-placeholder:
+  locales:
+    en: "title"
+    ja: "題名"
+apps-group-placeholder:
+  locales:
+    en: "group whose members see its jobs (optional)"
+    ja: "ジョブを見るグループ（任意）"
+apps-public:
+  locales:
+    en: "Public client (a frontend: no secret, PKCE)"
+    ja: "公開クライアント（フロントエンド。シークレットなし、PKCE）"
+apps-redirects-placeholder:
+  locales:
+    en: "redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)"
+    ja: "リダイレクト URI を 1 行に 1 つ: https://portal.example.com/callback（http は localhost だけ）"
+add:
+  locales:
+    en: "Add"
+    ja: "追加"
+cancel:
+  locales:
+    en: "Cancel"
+    ja: "キャンセル"
+secret-modal-heading:
+  locales:
+    en: "App secret"
+    ja: "アプリのシークレット"
+secret-modal-note:
+  locales:
+    en: "It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working."
+    ja: "表示されるのは今だけです。アプリケーションにコピーしてください。回すと新しいものができ、古いものは使えなくなります。"
+
+# The inboxes, the administrator's jobs, the deliveries.
+inboxes-title:
+  locales:
+    en: "Inboxes · BDF Docflow"
+    ja: "インボックス · BDF Docflow"
+inboxes-worker-placeholder:
+  locales:
+    en: "name (for the record)"
+    ja: "名前（記録用）"
+deliveries-title:
+  locales:
+    en: "Deliveries · BDF Docflow"
+    ja: "配送 · BDF Docflow"
+deliveries-heading:
+  locales:
+    en: "Deliveries waiting"
+    ja: "待っている配送"
+deliveries-tick:
+  locales:
+    en: "Tick now"
+    ja: "今すぐティック"
+deliveries-note:
+  locales:
+    en: "Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now."
+    ja: "プリンタやアーカイブへ向かう途中のジョブです。プロセスはバックグラウンドで、サーバーレスではティックで送ります。失敗した送信は、だんだん長くなる間隔の後に再試行され、「今すぐ再試行」ですぐに送り直します。"
+deliveries-job:
+  locales:
+    en: "Job"
+    ja: "ジョブ"
+deliveries-node:
+  locales:
+    en: "Node"
+    ja: "ノード"
+deliveries-printer:
+  locales:
+    en: "Printer"
+    ja: "プリンタ"
+deliveries-attempts:
+  locales:
+    en: "Attempts"
+    ja: "試行"
+deliveries-next:
+  locales:
+    en: "Next"
+    ja: "次回"
+deliveries-error:
+  locales:
+    en: "Last error"
+    ja: "最後のエラー"
+
+# The manual.
+help-title:
+  params: ["chapter string"]
+  locales:
+    en: "{chapter} · Help · BDF Docflow"
+    ja: "{chapter} · ヘルプ · BDF Docflow"
+help-contents:
+  locales:
+    en: "Contents"
+    ja: "目次"
+help-manual:
+  locales:
+    en: "Manual"
+    ja: "マニュアル"

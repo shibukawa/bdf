@@ -4,6 +4,8 @@
 // sends the public key. Afterwards it signs the manager's challenge for a
 // session, polls the location's board, and shows the slips' pages.
 
+import { _, locale } from "./i18n.js";
+
 const POLL_MS = 4000;
 const $ = (id) => document.getElementById(id);
 
@@ -86,7 +88,7 @@ async function enroll(ev) {
     history.replaceState(null, "", location.pathname);
     await start();
   } catch (e) {
-    $("enroll-error").textContent = "Could not enroll: " + e.message;
+    $("enroll-error").textContent = _("Could not enroll: {why}", { why: e.message });
     $("enroll-error").hidden = false;
   }
 }
@@ -105,7 +107,7 @@ async function login() {
     await db.clear();
     me = null;
     show("enroll");
-    throw new Error("This device is not enrolled");
+    throw new Error(_("This device is not enrolled"));
   }
   if (!res.ok) throw new Error("session " + res.status);
 }
@@ -143,12 +145,12 @@ function beep() {
   } catch {}
 }
 
-const stateText = { new: "New", opened: "Opened", done: "Done", canceled: "Canceled" };
+const stateText = { new: _("New"), opened: _("Opened"), done: _("Done"), canceled: _("Canceled") };
 const stateBadge = { new: "badge-warning", opened: "badge-info", done: "badge-success", canceled: "badge-error" };
 
 function time(s) {
   const d = new Date(s);
-  return d.toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(locale, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function item(s) {
@@ -165,15 +167,15 @@ function item(s) {
   badge.textContent = stateText[s.state] || s.state;
   const name = document.createElement("span");
   name.className = "min-w-0 flex-1 break-words text-xl font-semibold sm:text-2xl";
-  name.textContent = s.name || "Document " + s.job;
+  name.textContent = s.name || _("Document {n}", { n: s.job });
   const meta = document.createElement("span");
   meta.className = "w-full text-base text-base-content/60";
-  meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages} page${s.pages === 1 ? "" : "s"}`;
+  meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages === 1 ? _("{n} page", { n: 1 }) : _("{n} pages", { n: s.pages })}`;
   body.append(badge, name);
   if (s.printed && s.printed.length) {
     const p = document.createElement("span");
     p.className = "badge badge-outline badge-lg";
-    p.textContent = "Printed on paper";
+    p.textContent = _("Printed on paper");
     body.append(p);
   }
   body.append(meta);
@@ -204,7 +206,7 @@ async function poll() {
       const fresh = board.open.filter((s) => s.state === "new" && !known.has(s.id));
       if (!first && fresh.length) {
         beep();
-        toast(fresh.length === 1 ? `New: ${fresh[0].name || "#" + fresh[0].job}` : `${fresh.length} new documents`, "warning", true);
+        toast(fresh.length === 1 ? _("New: {name}", { name: fresh[0].name || "#" + fresh[0].job }) : _("{n} new documents", { n: fresh.length }), "warning", true);
       }
       first = false;
       known = new Set(board.open.map((s) => s.id));
@@ -212,22 +214,22 @@ async function poll() {
     } else if (res.status !== 304) {
       throw new Error("board " + res.status);
     }
-    status("Connected · " + new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }));
+    status(_("Connected · {time}", { time: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) }));
   } catch (e) {
-    status("Not connected: " + e.message, true);
+    status(_("Not connected: {why}", { why: e.message }), true);
   }
 }
 
 async function openSlip(s) {
   current = s;
   show("viewer");
-  $("viewer-title").textContent = `${s.name || "Document " + s.job} (#${s.job})`;
+  $("viewer-title").textContent = `${s.name || _("Document {n}", { n: s.job })} (#${s.job})`;
   $("print").hidden = !(info && info.can_print);
   const width = Math.min(2400, Math.round(window.innerWidth * (window.devicePixelRatio || 1)));
   const pages = [];
   for (let n = 1; n <= s.pages; n++) {
     const img = document.createElement("img");
-    img.alt = `page ${n}`;
+    img.alt = _("page {n}", { n });
     img.className = "w-full rounded-box bg-white shadow-md";
     img.loading = n <= 2 ? "eager" : "lazy";
     img.src = `/device/slips/${encodeURIComponent(s.id)}/pages/${n}.png?w=${width}`;
@@ -280,7 +282,7 @@ $("done").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/done`);
     closeSlip();
-    toast("Marked done", "success");
+    toast(_("Marked done"), "success");
   } catch (e) {
     toast(e.message, "error");
   }
@@ -288,9 +290,9 @@ $("done").addEventListener("click", async () => {
 $("print").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/print`);
-    toast("Printed", "success");
+    toast(_("Printed"), "success");
   } catch (e) {
-    toast("Could not print: " + e.message, "error");
+    toast(_("Could not print: {why}", { why: e.message }), "error");
   }
 });
 for (const t of ["open", "ended"]) {

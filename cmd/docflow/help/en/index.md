@@ -14,7 +14,7 @@ Docflow is a software-defined document network. A document enters at an entry �
 | Admin → Jobs | the role topology | every job, or those sent to one node, and the route each took |
 | Admin → Deliveries | the role topology | what waits for a printer, an archive or a step, and the tick ([Deliveries](inboxes.md#deliveries)) |
 | Audit | the role audit | who did what ([Audit](roles.md#audit)) |
-| Help | everyone signed in | this manual, in English and Japanese |
+| Help | everyone signed in | this manual. The pages and the manual are in English and Japanese, shown in the language chosen with the bar's switch (it names the other language, English or 日本語; the browser keeps the choice), else in the browser's language |
 | `/tablet` | a device | the display board of a location: no sign-in, the device's own key ([Display boards](displays.md)) |
 
 An administrator has every role. Who gets in, and who has which role, is in [Sign-in, roles and audit](roles.md).

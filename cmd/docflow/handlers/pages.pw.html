@@ -1,12 +1,15 @@
 package handlers
 
-// Shell is every page's document: the style (Tailwind CSS and daisyUI,
-// light or dark as the system is) and a body for the page's content. A
-// page of its own (a login, an approval of a device) is another component
-// in a Shell.
+messages pages
+
+// Shell is every page's document, in the language of the page (the
+// person's choice, else the browser's: pw's locale, which the scripts
+// read off lang): the style (Tailwind CSS and daisyUI, light or dark as
+// the system is) and a body for the page's content. A page of its own (a
+// login, an approval of a device) is another component in a Shell.
 component Shell(title: string, children: html): html {
   <!doctype html>
-  <html lang="en">
+  <html lang="{langtag}">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -20,7 +23,8 @@ component Shell(title: string, children: html): html {
 }
 
 // Account is the person signed in: an administrator has every role;
-// topology opens the admin pages, audit the audit log and every job.
+// topology opens the admin pages, audit the audit log and every job. The
+// languages are the bar's switch, and here the page it comes back to.
 type Account {
   name: string
   initial: string
@@ -28,6 +32,29 @@ type Account {
   admin: bool
   topology: bool
   audit: bool
+  languages: Language[]
+  here: string
+}
+
+// Language is a language the pages are written in: its tag, its name in
+// itself, and whether the page is in it.
+type Language {
+  tag: string
+  label: string
+  current: bool
+}
+
+// LanguageSwitch is a button for each language the page is not in: it
+// keeps the choice (POST /lang, pw's cookie) and comes back to next.
+component LanguageSwitch(languages: Language[], next: string): html {
+  <form method="post" action="/lang" class="flex items-center">
+    <input type="hidden" name="next" value={next}>
+    {for l in languages}
+      {if not l.current}
+        <button type="submit" name="lang" value={l.tag} lang={l.tag} class="btn btn-sm btn-ghost" title={t language-switch}>{l.label}</button>
+      {/if}
+    {/for}
+  </form>
 }
 
 // AppBar is the bar at the top of a page: the pages of the person signed
@@ -40,15 +67,16 @@ component AppBar(title: string, account: Account, children: html?): html {
     </div>
     <nav class="flex flex-wrap items-center gap-2">
       <slot />
-      <a href="/jobs" class="btn btn-sm btn-ghost">Jobs</a>
-      <a href="/topology" class="btn btn-sm btn-ghost">Topology</a>
+      <a href="/jobs" class="btn btn-sm btn-ghost">{t nav-jobs}</a>
+      <a href="/topology" class="btn btn-sm btn-ghost">{t nav-topology}</a>
       {if account.topology}
-        <a href="/admin" class="btn btn-sm btn-ghost">Admin</a>
+        <a href="/admin" class="btn btn-sm btn-ghost">{t nav-admin}</a>
       {/if}
       {if account.audit}
-        <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
+        <a href="/audit" class="btn btn-sm btn-ghost">{t nav-audit}</a>
       {/if}
-      <a href="/help" class="btn btn-sm btn-ghost" title="The manual">Help</a>
+      <a href="/help" class="btn btn-sm btn-ghost" title={t nav-help-title}>{t nav-help}</a>
+      <LanguageSwitch languages={account.languages} next={account.here}></LanguageSwitch>
       <div class="flex min-w-0 items-center gap-2">
         <div class="avatar avatar-placeholder" title={account.name}>
           <div class="w-8 rounded-full bg-neutral text-neutral-content"><span class="text-sm">{account.initial}</span></div>
@@ -57,9 +85,9 @@ component AppBar(title: string, account: Account, children: html?): html {
           <span id="account-name" class="max-w-48 truncate text-sm font-semibold">{account.name}</span>
           <span class="max-w-48 truncate text-xs text-base-content/60">{account.email}</span>
         </div>
-        {if account.admin}<span class="badge badge-primary badge-sm">Admin</span>{/if}
+        {if account.admin}<span class="badge badge-primary badge-sm">{t badge-admin}</span>{/if}
         <form method="post" action="/auth/logout">
-          <button id="logout" type="submit" class="btn btn-sm btn-outline">Sign out</button>
+          <button id="logout" type="submit" class="btn btn-sm btn-outline">{t sign-out}</button>
         </form>
       </div>
     </nav>
@@ -67,21 +95,25 @@ component AppBar(title: string, account: Account, children: html?): html {
 }
 
 // SignIn is the top page: a sign-in at the IdP (enabled), or, with no
-// IdP configured (development only), a word that nobody signs in.
-export component SignIn(enabled: bool): html {
+// IdP configured (development only), a word that nobody signs in; and
+// the switch of the language.
+export component SignIn(enabled: bool, languages: Language[]): html {
   <Shell title="BDF Docflow">
     <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
       <div class="card bg-base-100 shadow-md">
         <div class="card-body gap-4">
-          <h1 class="card-title text-2xl">BDF Docflow</h1>
-          <p class="text-base-content/70">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p>
+          <div class="flex items-center justify-between gap-2">
+            <h1 class="card-title text-2xl">BDF Docflow</h1>
+            <LanguageSwitch languages={languages} next="/"></LanguageSwitch>
+          </div>
+          <p class="text-base-content/70">{t signin-lead}</p>
           {if enabled}
-            <a id="sign-in" href="/auth/login?next=%2Fjobs" class="btn btn-primary btn-block">Sign in</a>
-            <p class="text-center text-sm text-base-content/60">with your organization's account</p>
+            <a id="sign-in" href="/auth/login?next=%2Fjobs" class="btn btn-primary btn-block">{t signin-button}</a>
+            <p class="text-center text-sm text-base-content/60">{t signin-with}</p>
           {else}
-            <div role="alert" class="alert alert-warning">No sign-in is configured (AUTH_OIDC_ISSUER): nobody signs in. Development only.</div>
+            <div role="alert" class="alert alert-warning">{t signin-none}</div>
           {/if}
-          <a href="/tablet" class="link link-hover text-center text-sm text-base-content/60">This is a display board's device</a>
+          <a href="/tablet" class="link link-hover text-center text-sm text-base-content/60">{t signin-device}</a>
         </div>
       </div>
     </main>
@@ -91,14 +123,14 @@ export component SignIn(enabled: bool): html {
 // Forbidden is the page of what the person signed in may not open: a
 // page of a role they do not have.
 export component Forbidden(account: Account, role: string): html {
-  <Shell title="Forbidden · BDF Docflow">
+  <Shell title={t forbidden-title}>
     <AppBar title="BDF Docflow" account={account}></AppBar>
     <main class="mx-auto max-w-lg p-4 sm:p-8">
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body items-center text-center">
-          <h1 class="card-title text-2xl">Not your page</h1>
-          <p class="text-base-content/70">{account.name} does not have the role {role}. Your jobs and your groups' are on the Jobs page.</p>
-          <div class="card-actions"><a href="/jobs" class="btn btn-primary">Jobs</a></div>
+          <h1 class="card-title text-2xl">{t forbidden-heading}</h1>
+          <p class="text-base-content/70">{t forbidden-text, name: account.name, role: role}</p>
+          <div class="card-actions"><a href="/jobs" class="btn btn-primary">{t nav-jobs}</a></div>
         </div>
       </div>
     </main>
@@ -108,34 +140,34 @@ export component Forbidden(account: Account, role: string): html {
 // Jobs is a person's page: their jobs, and printing a document to a
 // node. An administrator sees every job.
 export component Jobs(account: Account): html {
-  <Shell title="Jobs · BDF Docflow">
+  <Shell title={t jobs-title}>
     <AppBar title="BDF Docflow" account={account}></AppBar>
     <main class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
         <form id="print-form" class="card-body">
-          <h2 class="card-title">Print a document</h2>
-          <p class="text-sm text-base-content/60">PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.</p>
+          <h2 class="card-title">{t jobs-print-heading}</h2>
+          <p class="text-sm text-base-content/60">{t jobs-print-note}</p>
           <div class="flex flex-wrap gap-2">
             <select id="print-dest" class="select w-full sm:w-64" required></select>
             <input id="print-file" type="file" class="file-input w-full sm:flex-1" required>
-            <input id="print-name" class="input w-full sm:w-48" placeholder="job name (the file's)">
-            <button type="submit" class="btn btn-primary">Print</button>
+            <input id="print-name" class="input w-full sm:w-48" placeholder={t jobs-name-placeholder}>
+            <button type="submit" class="btn btn-primary">{t jobs-print}</button>
           </div>
         </form>
       </section>
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
-            <h2 class="card-title">{if account.audit}All jobs{else}My jobs and my groups'{/if}</h2>
-            <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+            <h2 class="card-title">{if account.audit}{t jobs-all}{else}{t jobs-mine}{/if}</h2>
+            <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
           </div>
           <div class="overflow-x-auto">
             <table class="table table-sm">
-              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class="hidden md:table-cell">Group</th><th class="hidden sm:table-cell">Received</th><th>State</th><th class="hidden lg:table-cell">Route</th><th></th></tr></thead>
+              <thead><tr><th>{t col-number}</th><th>{t col-name}</th><th>{t col-sent-to}</th><th>{t col-sent-by}</th><th class="hidden md:table-cell">{t col-group}</th><th class="hidden sm:table-cell">{t col-received}</th><th>{t col-state}</th><th class="hidden lg:table-cell">{t col-route}</th><th></th></tr></thead>
               <tbody id="jobs"></tbody>
             </table>
           </div>
-          <p class="text-xs text-base-content/60">Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to.</p>
+          <p class="text-xs text-base-content/60">{t jobs-reprint-note}</p>
         </div>
       </section>
     </main>
@@ -149,12 +181,12 @@ export component Jobs(account: Account): html {
 // pages' script marks the page's own link (admin.js).
 component AdminNav(): html {
   <nav id="admin-nav" role="tablist" class="tabs tabs-box tabs-sm w-fit">
-    <a role="tab" class="tab" href="/topology">Topology</a>
-    <a role="tab" class="tab" href="/admin/apps">Apps</a>
-    <a role="tab" class="tab" href="/admin/inboxes">Inboxes</a>
-    <a role="tab" class="tab" href="/admin/jobs">Jobs</a>
-    <a role="tab" class="tab" href="/admin/deliveries">Deliveries</a>
-    <a role="tab" class="tab" href="/audit">Audit</a>
+    <a role="tab" class="tab" href="/topology">{t nav-topology}</a>
+    <a role="tab" class="tab" href="/admin/apps">{t tab-apps}</a>
+    <a role="tab" class="tab" href="/admin/inboxes">{t tab-inboxes}</a>
+    <a role="tab" class="tab" href="/admin/jobs">{t nav-jobs}</a>
+    <a role="tab" class="tab" href="/admin/deliveries">{t tab-deliveries}</a>
+    <a role="tab" class="tab" href="/audit">{t nav-audit}</a>
   </nav>
 }
 
@@ -173,16 +205,16 @@ component AdminPage(title: string, account: Account, children: html): html {
 
 // Audit is the administrator's page of who did what.
 export component Audit(account: Account): html {
-  <AdminPage title="Audit · BDF Docflow" account={account}>
+  <AdminPage title={t audit-title} account={account}>
     <section class="card bg-base-100 shadow-sm">
       <div class="card-body">
         <div class="flex flex-wrap items-center gap-3">
-          <h2 class="card-title">Audit log</h2>
-          <span class="text-sm text-base-content/60">Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first.</span>
+          <h2 class="card-title">{t audit-heading}</h2>
+          <span class="text-sm text-base-content/60">{t audit-note}</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
-            <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead>
+            <thead><tr><th>{t audit-when}</th><th>{t audit-who}</th><th>{t audit-action}</th><th>{t audit-subject}</th><th>{t audit-detail}</th></tr></thead>
             <tbody id="audit"></tbody>
           </table>
         </div>
@@ -190,10 +222,10 @@ export component Audit(account: Account): html {
     </section>
     <section class="card bg-base-100 shadow-sm">
       <div class="card-body">
-        <h2 class="card-title">Recent jobs and their routes</h2>
+        <h2 class="card-title">{t audit-jobs-heading}</h2>
         <div class="overflow-x-auto">
           <table class="table table-sm">
-            <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead>
+            <thead><tr><th>{t col-number}</th><th>{t col-name}</th><th>{t col-sent-to}</th><th>{t col-sent-by}</th><th>{t col-source}</th><th>{t col-received}</th><th>{t col-state}</th><th>{t col-route}</th></tr></thead>
             <tbody id="jobs"></tbody>
           </table>
         </div>
@@ -203,35 +235,39 @@ export component Audit(account: Account): html {
   </AdminPage>
 }
 
-export component Tablet(): html {
-  <Shell title="Display board">
+// Tablet is the page of a display board's device (tablet.js): the
+// enrollment, the board, a slip open; and the switch of the language,
+// coming back to here (the enrollment code kept).
+export component Tablet(languages: Language[], here: string): html {
+  <Shell title={t tablet-title}>
     <div id="app" class="min-h-screen">
       <header id="bar" class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
         <div class="flex min-w-0 flex-1 items-center gap-3">
-          <h1 id="title" class="truncate text-2xl font-bold">Display board</h1>
+          <h1 id="title" class="truncate text-2xl font-bold">{t tablet-title}</h1>
           <span id="status" class="badge" hidden></span>
         </div>
         <label class="input input-lg w-full sm:w-56">
-          <span class="label">Worker</span>
-          <input id="worker" autocomplete="off" placeholder="name">
+          <span class="label">{t worker}</span>
+          <input id="worker" autocomplete="off" placeholder={t tablet-worker-placeholder}>
         </label>
+        <LanguageSwitch languages={languages} next={here}></LanguageSwitch>
       </header>
 
       <section id="enroll" class="mx-auto max-w-lg p-4 sm:p-8" hidden>
         <div class="card bg-base-100 shadow-md">
           <div class="card-body gap-4">
-            <h2 class="card-title text-2xl">Enroll this device</h2>
-            <p class="text-base-content/70">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p>
+            <h2 class="card-title text-2xl">{t tablet-enroll-heading}</h2>
+            <p class="text-base-content/70">{t tablet-enroll-note}</p>
             <form id="enroll-form" class="flex flex-col gap-4">
               <fieldset class="fieldset">
-                <legend class="fieldset-legend text-base">Enrollment code</legend>
+                <legend class="fieldset-legend text-base">{t enrollment-code}</legend>
                 <input id="code" class="input input-lg w-full font-mono tracking-widest uppercase" autocomplete="off" autocapitalize="characters" required>
               </fieldset>
               <fieldset class="fieldset">
-                <legend class="fieldset-legend text-base">Device name</legend>
-                <input id="device-name" class="input input-lg w-full" autocomplete="off" placeholder="e.g. tablet at the shipping dock">
+                <legend class="fieldset-legend text-base">{t tablet-device-name}</legend>
+                <input id="device-name" class="input input-lg w-full" autocomplete="off" placeholder={t tablet-device-placeholder}>
               </fieldset>
-              <button type="submit" class="btn btn-primary btn-lg btn-block">Enroll</button>
+              <button type="submit" class="btn btn-primary btn-lg btn-block">{t tablet-enroll}</button>
             </form>
             <div id="enroll-error" role="alert" class="alert alert-error" hidden></div>
           </div>
@@ -240,21 +276,21 @@ export component Tablet(): html {
 
       <section id="board" class="mx-auto max-w-5xl p-4" hidden>
         <div role="tablist" class="tabs tabs-box tabs-lg w-full sm:w-fit">
-          <button id="tab-open" role="tab" class="tab tab-active flex-1 sm:flex-none" type="button">Open <span id="open-count" class="badge badge-warning ml-2" hidden></span></button>
-          <button id="tab-ended" role="tab" class="tab flex-1 sm:flex-none" type="button">Done and canceled</button>
+          <button id="tab-open" role="tab" class="tab tab-active flex-1 sm:flex-none" type="button">{t tablet-open} <span id="open-count" class="badge badge-warning ml-2" hidden></span></button>
+          <button id="tab-ended" role="tab" class="tab flex-1 sm:flex-none" type="button">{t tablet-ended}</button>
         </div>
         <ul id="open-list" class="mt-4 grid gap-3"></ul>
         <ul id="ended-list" class="mt-4 grid gap-3" hidden></ul>
-        <div id="empty" class="mt-16 text-center text-xl text-base-content/50" hidden>No documents</div>
+        <div id="empty" class="mt-16 text-center text-xl text-base-content/50" hidden>{t tablet-empty}</div>
       </section>
 
       <section id="viewer" hidden>
         <div class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
-          <button id="back" type="button" class="btn btn-lg btn-ghost">← Board</button>
+          <button id="back" type="button" class="btn btn-lg btn-ghost">{t tablet-back}</button>
           <span id="viewer-title" class="min-w-0 flex-1 truncate text-lg font-semibold"></span>
           <div class="flex gap-2">
-            <button id="print" type="button" class="btn btn-lg btn-outline" hidden>Print here</button>
-            <button id="done" type="button" class="btn btn-lg btn-success">Done</button>
+            <button id="print" type="button" class="btn btn-lg btn-outline" hidden>{t tablet-print}</button>
+            <button id="done" type="button" class="btn btn-lg btn-success">{t tablet-done}</button>
           </div>
         </div>
         <div id="pages" class="mx-auto grid max-w-5xl gap-4 p-4"></div>
@@ -294,7 +330,7 @@ component PaletteKind(kind: string, name: string, children: html): html {
 // may. The script tells the two apart by the palette, which only the
 // role's page has; the API checks the role itself.
 export component Topology(account: Account): html {
-  <Shell title="Topology · BDF Docflow">
+  <Shell title={t topology-title}>
     <AppBar title="BDF Docflow" account={account}></AppBar>
     <main class="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6">
       {if account.topology}
@@ -303,59 +339,59 @@ export component Topology(account: Account): html {
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body gap-3">
           <div class="flex flex-wrap items-center gap-2">
-            <h2 class="card-title">Topology</h2>
+            <h2 class="card-title">{t nav-topology}</h2>
             {if account.topology}
               <div class="dropdown max-sm:static">
-                <div tabindex="0" role="button" class="btn btn-sm btn-primary">+ Add a node</div>
+                <div tabindex="0" role="button" class="btn btn-sm btn-primary">{t topology-add}</div>
                 <div tabindex="0" class="dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md">
                   <ul id="palette" class="menu w-full md:block md:columns-2 xl:columns-4">
-                    <PaletteGroup title="Source">
-                      <PaletteKind kind="endpoint" name="Endpoint">a REST entry for applications</PaletteKind>
-                      <PaletteKind kind="cups" name="CUPS server (source)">the IPP entry: computers print to it, on a port of its own</PaletteKind>
-                      <PaletteKind kind="s3-trigger" name="S3 Trigger">takes the objects an S3 event names</PaletteKind>
+                    <PaletteGroup title={t palette-source}>
+                      <PaletteKind kind="endpoint" name={t kind-endpoint}>{t kind-endpoint-note}</PaletteKind>
+                      <PaletteKind kind="cups" name={t kind-cups}>{t kind-cups-note}</PaletteKind>
+                      <PaletteKind kind="s3-trigger" name={t kind-s3-trigger}>{t kind-s3-trigger-note}</PaletteKind>
                     </PaletteGroup>
-                    <PaletteGroup title="Control">
-                      <PaletteKind kind="queue" name="Queue">forwards to every node it points to</PaletteKind>
-                      <PaletteKind kind="class" name="Class">one member in turn, or the first</PaletteKind>
-                      <PaletteKind kind="filter" name="Filter">sends on by rules on what a job is, and its metadata</PaletteKind>
-                      <PaletteKind kind="inbox" name="Inbox">held until a person releases it</PaletteKind>
-                      <PaletteKind kind="notify" name="Notify">tells Slack, a mail or a webhook; failures come along on_error</PaletteKind>
+                    <PaletteGroup title={t palette-control}>
+                      <PaletteKind kind="queue" name={t kind-queue}>{t kind-queue-note}</PaletteKind>
+                      <PaletteKind kind="class" name={t kind-class}>{t kind-class-note}</PaletteKind>
+                      <PaletteKind kind="filter" name={t kind-filter}>{t kind-filter-note}</PaletteKind>
+                      <PaletteKind kind="inbox" name={t kind-inbox}>{t kind-inbox-note}</PaletteKind>
+                      <PaletteKind kind="notify" name={t kind-notify}>{t kind-notify-note}</PaletteKind>
                     </PaletteGroup>
-                    <PaletteGroup title="Convert">
-                      <PaletteKind kind="template" name="Template">fills a template with data, into a .bdf document</PaletteKind>
-                      <PaletteKind kind="convert" name="Convert">makes a .bdf document of a file received as it is</PaletteKind>
-                      <PaletteKind kind="sign" name="Sign">signs a .bdf document as a witness of who sent it</PaletteKind>
-                      <PaletteKind kind="render" name="Render">draws a .bdf document as a PDF, or a page as a PNG</PaletteKind>
+                    <PaletteGroup title={t palette-convert}>
+                      <PaletteKind kind="template" name={t kind-template}>{t kind-template-note}</PaletteKind>
+                      <PaletteKind kind="convert" name={t kind-convert}>{t kind-convert-note}</PaletteKind>
+                      <PaletteKind kind="sign" name={t kind-sign}>{t kind-sign-note}</PaletteKind>
+                      <PaletteKind kind="render" name={t kind-render}>{t kind-render-note}</PaletteKind>
                     </PaletteGroup>
-                    <PaletteGroup title="Sink">
-                      <PaletteKind kind="display" name="Display">shown on the devices enrolled there</PaletteKind>
-                      <PaletteKind kind="printer" name="Printer">printed on paper</PaletteKind>
-                      <PaletteKind kind="cups-out" name="CUPS server (sink)">printed to a queue of a CUPS server, over IPP</PaletteKind>
-                      <PaletteKind kind="archive" name="Archive">written once, never changed</PaletteKind>
-                      <PaletteKind kind="sink" name="Sink">keeps the latest documents, to look at</PaletteKind>
-                      <PaletteKind kind="export" name="HTTP (pull)">fetched by applications and people from an inbox or an archive</PaletteKind>
-                      <PaletteKind kind="http" name="HTTP (push)">sent to a web service, as the body or as multipart</PaletteKind>
-                      <PaletteKind kind="smtp" name="Mail (SMTP)">mails it as an attachment</PaletteKind>
-                      <PaletteKind kind="s3" name="S3">written to a bucket, once</PaletteKind>
+                    <PaletteGroup title={t palette-sink}>
+                      <PaletteKind kind="display" name={t kind-display}>{t kind-display-note}</PaletteKind>
+                      <PaletteKind kind="printer" name={t kind-printer}>{t kind-printer-note}</PaletteKind>
+                      <PaletteKind kind="cups-out" name={t kind-cups-out}>{t kind-cups-out-note}</PaletteKind>
+                      <PaletteKind kind="archive" name={t kind-archive}>{t kind-archive-note}</PaletteKind>
+                      <PaletteKind kind="sink" name={t kind-sink}>{t kind-sink-note}</PaletteKind>
+                      <PaletteKind kind="export" name={t kind-export}>{t kind-export-note}</PaletteKind>
+                      <PaletteKind kind="http" name={t kind-http}>{t kind-http-note}</PaletteKind>
+                      <PaletteKind kind="smtp" name={t kind-smtp}>{t kind-smtp-note}</PaletteKind>
+                      <PaletteKind kind="s3" name={t kind-s3}>{t kind-s3-note}</PaletteKind>
                     </PaletteGroup>
                   </ul>
                 </div>
               </div>
             {/if}
             <div class="join">
-              <button id="zoom-out" type="button" class="btn btn-sm join-item" title="Zoom out">−</button>
-              <button id="zoom-fit" type="button" class="btn btn-sm join-item" title="Fit the topology in the view">Fit</button>
-              <button id="zoom-in" type="button" class="btn btn-sm join-item" title="Zoom in">+</button>
+              <button id="zoom-out" type="button" class="btn btn-sm join-item" title={t zoom-out}>−</button>
+              <button id="zoom-fit" type="button" class="btn btn-sm join-item" title={t zoom-fit-title}>{t zoom-fit}</button>
+              <button id="zoom-in" type="button" class="btn btn-sm join-item" title={t zoom-in}>+</button>
             </div>
             {if account.topology}
-              <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
-              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title="The OpenAPI document of every endpoint and HTTP (pull) node">OpenAPI</a>
+              <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
+              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title={t topology-openapi-title}>OpenAPI</a>
             {/if}
             <span id="live" class="badge badge-ghost badge-sm"></span>
             {if account.topology}
-              <span class="text-sm text-base-content/60">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them (a node that would not take what the edge carries fades, and the wire turns red over it); click an edge to remove it; click a node to edit it in the sidebar.</span>
+              <span class="text-sm text-base-content/60">{t topology-edit-note}</span>
             {else}
-              <span class="text-sm text-base-content/60">The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may.</span>
+              <span class="text-sm text-base-content/60">{t topology-view-note}</span>
             {/if}
           </div>
           <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -371,30 +407,30 @@ export component Topology(account: Account): html {
         <datalist id="node-names"></datalist>
         <dialog id="enroll-modal" class="modal">
           <div class="modal-box max-w-md text-center">
-            <h3 class="text-lg font-bold">Enrollment code</h3>
-            <p class="text-sm text-base-content/70">Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.</p>
+            <h3 class="text-lg font-bold">{t enrollment-code}</h3>
+            <p class="text-sm text-base-content/70">{t enroll-modal-note}</p>
             <div id="qr" class="qr mx-auto my-4 size-56 rounded-box bg-white p-2"></div>
             <p id="enroll-code" class="font-mono text-4xl font-bold tracking-widest"></p>
             <p class="mt-3 break-all"><a id="enroll-url" class="link link-primary"></a></p>
             <p id="enroll-expires" class="mt-2 text-sm text-base-content/60"></p>
             <div class="modal-action justify-center">
-              <form method="dialog"><button class="btn">Close</button></form>
+              <form method="dialog"><button class="btn">{t close}</button></form>
             </div>
           </div>
-          <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+          <form method="dialog" class="modal-backdrop"><button>{t close}</button></form>
         </dialog>
         <dialog id="key-modal" class="modal">
           <div class="modal-box max-w-lg">
-            <h3 class="text-lg font-bold">Endpoint key</h3>
-            <p class="mt-2 text-sm text-base-content/70">The key of <span id="key-name" class="font-mono"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p>
+            <h3 class="text-lg font-bold">{t key-modal-heading}: <span id="key-name" class="font-mono"></span></h3>
+            <p class="mt-2 text-sm text-base-content/70">{t key-modal-note}</p>
             <pre id="key-value" class="mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap"></pre>
             <p id="key-usage" class="mt-2 font-mono text-xs text-base-content/60 break-all"></p>
             <div class="modal-action">
-              <button id="key-copy" type="button" class="btn btn-primary">Copy</button>
-              <form method="dialog"><button class="btn">Close</button></form>
+              <button id="key-copy" type="button" class="btn btn-primary">{t copy}</button>
+              <form method="dialog"><button class="btn">{t close}</button></form>
             </div>
           </div>
-          <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+          <form method="dialog" class="modal-backdrop"><button>{t close}</button></form>
         </dialog>
       {/if}
     </main>
@@ -407,43 +443,43 @@ export component Topology(account: Account): html {
 // their own (client credentials): registered here with their scopes, the
 // secret shown once; an endpoint lists the apps it takes.
 export component Apps(account: Account): html {
-  <AdminPage title="Apps · BDF Docflow" account={account}>
+  <AdminPage title={t apps-title} account={account}>
     <section class="card bg-base-100 shadow-sm">
       <div class="card-body">
         <div class="flex flex-wrap items-center gap-3">
-          <h2 class="card-title">Apps</h2>
-          <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
-          <span class="text-sm text-base-content/60">Applications with credentials of their own. A backend takes a token at <code class="font-mono">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class="font-mono">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts.</span>
+          <h2 class="card-title">{t tab-apps}</h2>
+          <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
+          <span class="text-sm text-base-content/60">{t apps-note}<code hole="token" class="font-mono"></code><code hole="authorize" class="font-mono"></code>{/t}</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
-            <thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead>
+            <thead><tr><th>{t apps-id}</th><th>{t apps-col-title}</th><th>{t apps-scopes}</th><th>{t col-group}</th><th>{t apps-where}</th><th>{t apps-last-used}</th><th></th></tr></thead>
             <tbody id="apps"></tbody>
           </table>
         </div>
         <form id="app-form" class="mt-2 grid gap-2 sm:grid-cols-6">
-          <input id="app-id" class="input sm:col-span-1" placeholder="id (erp)" autocomplete="off" required>
-          <input id="app-title" class="input sm:col-span-2" placeholder="title">
-          <input id="app-group" class="input sm:col-span-2" placeholder="group whose members see its jobs (optional)">
-          <label class="label cursor-pointer gap-2 sm:col-span-2"><input id="app-public" type="checkbox" class="checkbox checkbox-sm"><span class="text-sm">Public client (a frontend: no secret, PKCE)</span></label>
-          <textarea id="app-redirects" class="textarea sm:col-span-4" rows="2" placeholder="redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)" hidden></textarea>
+          <input id="app-id" class="input sm:col-span-1" placeholder={t apps-id-placeholder} autocomplete="off" required>
+          <input id="app-title" class="input sm:col-span-2" placeholder={t apps-title-placeholder}>
+          <input id="app-group" class="input sm:col-span-2" placeholder={t apps-group-placeholder}>
+          <label class="label cursor-pointer gap-2 sm:col-span-2"><input id="app-public" type="checkbox" class="checkbox checkbox-sm"><span class="text-sm">{t apps-public}</span></label>
+          <textarea id="app-redirects" class="textarea sm:col-span-4" rows="2" placeholder={t apps-redirects-placeholder} hidden></textarea>
           <div id="app-scopes" class="flex flex-wrap items-center gap-3 sm:col-span-6"></div>
-          <button id="app-submit" type="submit" class="btn btn-primary sm:col-span-1">Add</button>
-          <button id="app-cancel" type="button" class="btn btn-ghost sm:col-span-1" hidden>Cancel</button>
+          <button id="app-submit" type="submit" class="btn btn-primary sm:col-span-1">{t add}</button>
+          <button id="app-cancel" type="button" class="btn btn-ghost sm:col-span-1" hidden>{t cancel}</button>
         </form>
       </div>
     </section>
     <dialog id="secret-modal" class="modal">
       <div class="modal-box max-w-lg">
-        <h3 class="text-lg font-bold">App secret</h3>
-        <p class="mt-2 text-sm text-base-content/70">The secret of <span id="secret-id" class="font-mono"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p>
+        <h3 class="text-lg font-bold">{t secret-modal-heading}: <span id="secret-id" class="font-mono"></span></h3>
+        <p class="mt-2 text-sm text-base-content/70">{t secret-modal-note}</p>
         <pre id="secret-value" class="mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap"></pre>
         <p id="secret-usage" class="mt-2 font-mono text-xs text-base-content/60 break-all"></p>
         <div class="modal-action">
-          <form method="dialog"><button class="btn">Close</button></form>
+          <form method="dialog"><button class="btn">{t close}</button></form>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+      <form method="dialog" class="modal-backdrop"><button>{t close}</button></form>
     </dialog>
     <script type="module" src="/public/apps.js"></script>
   </AdminPage>
@@ -452,14 +488,14 @@ export component Apps(account: Account): html {
 // Inboxes is the page of the items held in the inboxes: a person releases
 // them to a node, or discards them.
 export component Inboxes(account: Account): html {
-  <AdminPage title="Inboxes · BDF Docflow" account={account}>
+  <AdminPage title={t inboxes-title} account={account}>
     <div class="flex flex-wrap items-center gap-3">
-      <h2 class="text-xl font-bold">Inboxes</h2>
+      <h2 class="text-xl font-bold">{t tab-inboxes}</h2>
       <label class="input input-sm w-64">
-        <span class="label">Worker</span>
-        <input id="worker" autocomplete="off" placeholder="name (for the record)">
+        <span class="label">{t worker}</span>
+        <input id="worker" autocomplete="off" placeholder={t inboxes-worker-placeholder}>
       </label>
-      <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+      <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
     </div>
     <section id="inboxes" class="grid gap-4"></section>
     <script type="module" src="/public/inboxes.js"></script>
@@ -469,17 +505,17 @@ export component Inboxes(account: Account): html {
 // AdminJobs is the administrator's page of every job: all of them, or
 // those sent to one node, with the route each took.
 export component AdminJobs(account: Account): html {
-  <AdminPage title="Jobs · BDF Docflow" account={account}>
+  <AdminPage title={t jobs-title} account={account}>
     <section class="card bg-base-100 shadow-sm">
       <div class="card-body">
         <div class="flex flex-wrap items-center gap-3">
-          <h2 class="card-title">Jobs</h2>
+          <h2 class="card-title">{t nav-jobs}</h2>
           <select id="jobs-dest" class="select select-sm w-64"></select>
-          <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+          <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
-            <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead>
+            <thead><tr><th>{t col-number}</th><th>{t col-name}</th><th>{t col-sent-to}</th><th>{t col-sent-by}</th><th>{t col-received}</th><th>{t col-state}</th><th>{t col-route}</th><th></th></tr></thead>
             <tbody id="jobs"></tbody>
           </table>
         </div>
@@ -492,18 +528,18 @@ export component AdminJobs(account: Account): html {
 // Deliveries is the page of the jobs on their way to printers and
 // archives, and of the tick.
 export component Deliveries(account: Account): html {
-  <AdminPage title="Deliveries · BDF Docflow" account={account}>
+  <AdminPage title={t deliveries-title} account={account}>
     <section class="card bg-base-100 shadow-sm">
       <div class="card-body">
         <div class="flex flex-wrap items-center gap-3">
-          <h2 class="card-title">Deliveries waiting</h2>
-          <button id="tick" type="button" class="btn btn-sm">Tick now</button>
-          <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
-          <span class="text-sm text-base-content/60">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span>
+          <h2 class="card-title">{t deliveries-heading}</h2>
+          <button id="tick" type="button" class="btn btn-sm">{t deliveries-tick}</button>
+          <button id="refresh" type="button" class="btn btn-sm btn-ghost">{t refresh}</button>
+          <span class="text-sm text-base-content/60">{t deliveries-note}</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
-            <thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead>
+            <thead><tr><th>{t deliveries-job}</th><th>{t deliveries-node}</th><th>{t deliveries-printer}</th><th>{t col-state}</th><th>{t deliveries-attempts}</th><th>{t deliveries-next}</th><th>{t deliveries-error}</th><th></th></tr></thead>
             <tbody id="deliveries"></tbody>
           </table>
         </div>
@@ -514,10 +550,10 @@ export component Deliveries(account: Account): html {
 }
 
 // Help is the manual: a chapter of the embedded Markdown (package help),
-// rendered by it, with the manual's other languages above it, and the
-// chapters beside it (after it on a phone) with the sections of the one
-// shown. The body is the renderer's own HTML of a file of the
-// repository, nobody else's.
+// rendered by it, with the chapters beside it (after it on a phone) and
+// the sections of the one shown. The bar's switch of the language goes
+// to the chapter in the other language. The body is the renderer's own
+// HTML of a file of the repository, nobody else's.
 type HelpSection {
   title: string
   href: url
@@ -530,25 +566,17 @@ type HelpChapter {
   sections: HelpSection[]
 }
 
-type HelpLang {
-  label: string
-  href: url
-}
-
-export component Help(account: Account, title: string, language: string, chapters: HelpChapter[], langs: HelpLang[], body: string): html {
+export component Help(account: Account, title: string, language: string, chapters: HelpChapter[], body: string): html {
   <Shell title={title}>
     <AppBar title="BDF Docflow" account={account}></AppBar>
     <main class="mx-auto grid max-w-7xl grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <article id="help" lang={language} class="prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1">
-        <div class="not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm">
-          <a href="#help-nav" class="link link-hover lg:hidden">Contents</a>
-          {for l in langs}
-            <a href={l.href} class="link link-hover">{l.label}</a>
-          {/for}
+        <div class="not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm lg:hidden">
+          <a href="#help-nav" class="link link-hover">{t help-contents}</a>
         </div>
         {RawHTML(body)}
       </article>
-      <nav aria-label="Manual" class="lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
+      <nav aria-label={t help-manual} class="lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
         <ul id="help-nav" class="menu w-full rounded-box bg-base-100 shadow-sm">
           {for c in chapters}
             {if c.current}

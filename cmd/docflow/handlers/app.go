@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/popcornweb/plugin/auth"
 	"github.com/shibukawa/popcornweb/pw"
+	"github.com/shibukawa/popcornweb/pwruntime"
 )
 
 // App is the manager of the configured store, and the pages around it.
@@ -151,7 +153,9 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 // and devices' endpoints. The pages' scripts and style are the framework's
 // /public mount's. Every page but /tablet is for a person signed in
 // (ConfigureAuth); /admin/… and /audit for an administrator; /help is the
-// manual.
+// manual. The pages are in the language of the person (localized), and
+// POST /lang changes it; the API and the printers' endpoints are not
+// translated.
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := docflow.Handler(a.m)
@@ -166,14 +170,15 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("/device/", mh)
 	// the pages: a sign-in at the top; the jobs of the person signed in;
 	// the administrator's pages and audit log
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{$}", localized(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if a.viewer(r) != nil {
 			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 			return
 		}
-		pw.WriteHTML(w, r, SignIn(SignInParams{Enabled: auth.Protection().Protected != nil}))
-	})
+		pw.WriteHTML(w, r, SignIn(SignInParams{Enabled: auth.Protection().Protected != nil, Languages: languages(r)}))
+	}))
+	mux.HandleFunc("POST /lang", setLanguage)
 	mux.HandleFunc("GET /jobs", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
 	}))
@@ -207,9 +212,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /audit", a.page(docflow.RoleAudit, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Audit(AuditParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
-		pw.WriteHTML(w, r, Tablet(TabletParams{}))
-	})
+	mux.HandleFunc("GET /tablet", localized(func(w http.ResponseWriter, r *http.Request) {
+		pw.WriteHTML(w, r, Tablet(TabletParams{Languages: languages(r), Here: r.URL.RequestURI()}))
+	}))
 	// the manual, for everyone signed in (help.go)
 	mux.HandleFunc("GET /help", a.page("", a.help))
 	mux.HandleFunc("GET /help/{first}", a.page("", a.help))
@@ -220,31 +225,73 @@ func (a *App) Handler() http.Handler {
 	return mux
 }
 
-// page serves a page of a person signed in; with a role, of a person
-// with it (others get 403).
+// page serves a page of a person signed in, in their language; with a
+// role, of a person with it (others get 403).
 func (a *App) page(role string, fn func(http.ResponseWriter, *http.Request, Account)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return localized(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		v := a.viewer(r)
 		switch {
 		case v == nil:
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 		case role != "" && !v.Can(role):
-			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v), Role: role}))
+			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v, r), Role: role}))
 		default:
-			fn(w, r, account(v))
+			fn(w, r, account(v, r))
 		}
-	}
+	})
 }
 
-func account(v *docflow.Viewer) Account {
+func account(v *docflow.Viewer, r *http.Request) Account {
 	name := firstOr(v.Name, v.Email)
 	initial := "?"
 	for _, r := range name {
 		initial = strings.ToUpper(string(r))
 		break
 	}
-	return Account{Name: name, Initial: initial, Email: v.Email, Admin: v.Admin, Topology: v.Can(docflow.RoleTopology), Audit: v.Can(docflow.RoleAudit)}
+	return Account{Name: name, Initial: initial, Email: v.Email, Admin: v.Admin, Topology: v.Can(docflow.RoleTopology), Audit: v.Can(docflow.RoleAudit),
+		Languages: languages(r), Here: r.URL.RequestURI()}
+}
+
+// localized serves a page in its reader's language: the one they chose
+// (pw's cookie, set by POST /lang), else their browser's
+// (Accept-Language), else English; popcornweb.toml declares them. pw.Run
+// does not resolve the language itself (popcornweb 0.5.14: the catalog
+// registers the languages, the middleware is the application's to put
+// on), and it is put on the pages alone, so that the API and the
+// printers' endpoints neither vary on the cookie nor say a
+// Content-Language.
+func localized(h http.HandlerFunc) http.HandlerFunc {
+	return pwruntime.LocaleMiddleware(h).ServeHTTP
+}
+
+// languages are the pages' languages, for the switch: the page's marked.
+func languages(r *http.Request) []Language {
+	var out []Language
+	for _, c := range pw.LocaleChoices(r) {
+		out = append(out, Language{Tag: c.Locale.Tag(), Label: c.Label, Current: c.Current})
+	}
+	return out
+}
+
+// setLanguage is the switch of the language (LanguageSwitch): the
+// language chosen is kept in pw's cookie, and the browser goes back to
+// the page it was on. A language that is not the pages' changes nothing.
+func setLanguage(w http.ResponseWriter, r *http.Request) {
+	if l, ok := pw.ParseLocale(r.FormValue("lang")); ok {
+		pw.SetLocale(w, l)
+	}
+	http.Redirect(w, r, localPath(r.FormValue("next")), http.StatusSeeOther)
+}
+
+// localPath is a path of this site to go back to, else the top: never a
+// URL of another site (a scheme, //host, /\host).
+func localPath(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || strings.HasPrefix(s, "/\\") {
+		return "/"
+	}
+	return s
 }
 
 func firstOr(s, or string) string {

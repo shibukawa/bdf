@@ -2,6 +2,8 @@
 // their jobs and their groups' (an administrator: every job), through the
 // API with the session's cookie.
 
+import { _, locale } from "./i18n.js";
+
 const $ = (id) => document.getElementById(id);
 
 function status(text, bad) {
@@ -18,7 +20,7 @@ async function api(method, path, body) {
   const res = await fetch(path, { method, body });
   if (res.status === 401) {
     location.href = "/";
-    throw new Error("signed out");
+    throw new Error(_("signed out"));
   }
   if (res.status === 204) return null;
   const out = await res.json();
@@ -33,8 +35,9 @@ function el(tag, text, attrs = {}) {
   return e;
 }
 
-const KINDS = { endpoint: "Endpoint", queue: "Queue", class: "Class", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer" };
+const KINDS = { endpoint: _("Endpoint"), queue: _("Queue"), class: _("Class"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer") };
 const ENDED = ["completed", "canceled", "aborted"];
+const STATES = { processing: _("processing"), held: _("held"), completed: _("completed"), canceled: _("canceled"), aborted: _("aborted") };
 
 function legsOf(j) {
   return (j.legs || [])
@@ -46,7 +49,7 @@ function legsOf(j) {
 function sender(j) {
   const by = j.submitted_by || {};
   const who = by.name || by.id || by.kind || "";
-  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+  return j.claimed_user && j.claimed_user !== who ? _("{who} (as {claimed})", { who, claimed: j.claimed_user }) : who;
 }
 
 let me = null;
@@ -59,13 +62,13 @@ function mine(j) {
 
 function stateBadge(state) {
   const cls = state === "completed" ? "badge-success badge-soft" : state === "held" ? "badge-warning" : state === "processing" ? "badge-info" : "badge-ghost";
-  return el("span", state, { className: "badge whitespace-nowrap " + cls });
+  return el("span", STATES[state] || state, { className: "badge whitespace-nowrap " + cls, title: state });
 }
 
 async function loadDestinations() {
   const ds = await api("GET", "/api/destinations");
   const chosen = $("print-dest").value;
-  $("print-dest").replaceChildren(...ds.map((d) => el("option", `${d.title && d.title !== d.name ? d.title + " · " : ""}${d.name} (${KINDS[d.kind] || d.kind})`, { value: d.name, selected: d.name === chosen })));
+  $("print-dest").replaceChildren(...ds.map((d) => el("option", (d.title && d.title !== d.name ? d.title + " · " : "") + _("{name} ({kind})", { name: d.name, kind: KINDS[d.kind] || d.kind }), { value: d.name, selected: d.name === chosen })));
 }
 
 async function loadJobs() {
@@ -74,26 +77,26 @@ async function loadJobs() {
     const tr = el("tr");
     tr.append(
       el("td", "#" + j.number, { className: "font-mono" }),
-      el("td", j.name || "", { className: "font-semibold", title: (j.kind || "bdf") + (j.format ? " · received as " + j.format : "") + (j.meta ? "\n" + Object.entries(j.meta).map(([k, v]) => k + ": " + (typeof v === "string" ? v : JSON.stringify(v))).join("\n") : "") }),
+      el("td", j.name || "", { className: "font-semibold", title: (j.format ? _("{kind} · received as {format}", { kind: j.kind || "bdf", format: j.format }) : j.kind || "bdf") + (j.meta ? "\n" + Object.entries(j.meta).map(([k, v]) => k + ": " + (typeof v === "string" ? v : JSON.stringify(v))).join("\n") : "") }),
       el("td", j.dest, { className: "whitespace-nowrap font-mono text-sm" }),
       el("td", sender(j), { className: "text-sm" }),
       el("td", j.group || "—", { className: "hidden whitespace-nowrap text-sm md:table-cell" }),
-      el("td", new Date(j.received).toLocaleString(), { className: "hidden text-sm text-base-content/60 sm:table-cell" }),
+      el("td", new Date(j.received).toLocaleString(locale), { className: "hidden text-sm text-base-content/60 sm:table-cell" }),
       el("td"),
       el("td", legsOf(j), { className: "hidden font-mono text-xs lg:table-cell" }),
       el("td", undefined, { className: "whitespace-nowrap" }),
     );
     tr.children[6].append(stateBadge(j.state));
     const actions = tr.lastChild;
-    const a = el("a", "Document", { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` });
+    const a = el("a", _("Document"), { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` });
     actions.append(a);
     // a reprint, to the job's node or to another chosen in the form above
-    const re = el("button", "Reprint", { type: "button", className: "btn btn-xs btn-ghost mr-1", title: "Send the document again, to " + j.dest + " (hold Shift: to the node chosen above)" });
+    const re = el("button", _("Reprint"), { type: "button", className: "btn btn-xs btn-ghost mr-1", title: _("Send the document again, to {node} (hold Shift: to the node chosen above)", { node: j.dest }) });
     re.addEventListener("click", async (ev) => {
       try {
         const to = ev.shiftKey ? $("print-dest").value : j.dest;
         const again = await api("POST", `/api/jobs/${j.id}/reprint`, JSON.stringify({ to }));
-        status(`Job #${again.number} is ${again.state} (a reprint of #${j.number} at ${to})`);
+        status(_("Job #{n} is {state} (a reprint of #{of} at {node})", { n: again.number, state: STATES[again.state] || again.state, of: j.number, node: to }));
         await loadJobs();
       } catch (e) {
         status(e.message, true);
@@ -102,7 +105,7 @@ async function loadJobs() {
     actions.append(re);
     // the sender and an administrator cancel; the group only sees
     if ((mine(j) || me?.admin) && (!ENDED.includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown"))) {
-      const b = el("button", "Cancel", { type: "button", className: "btn btn-xs btn-ghost text-error" });
+      const b = el("button", _("Cancel"), { type: "button", className: "btn btn-xs btn-ghost text-error" });
       b.addEventListener("click", async () => {
         try {
           await api("POST", `/api/jobs/${j.id}/cancel`);
@@ -117,7 +120,7 @@ async function loadJobs() {
   });
   if (!rows.length) {
     const tr = el("tr");
-    tr.append(el("td", "No jobs yet", { colSpan: 9, className: "text-base-content/50" }));
+    tr.append(el("td", _("No jobs yet"), { colSpan: 9, className: "text-base-content/50" }));
     rows.push(tr);
   }
   $("jobs").replaceChildren(...rows);
@@ -140,7 +143,7 @@ $("print-form").addEventListener("submit", async (ev) => {
   const name = $("print-name").value || file.name;
   try {
     const j = await api("POST", `/api/destinations/${$("print-dest").value}/jobs?name=${encodeURIComponent(name)}`, file);
-    status(`Job #${j.number} is ${j.state}`);
+    status(_("Job #{n} is {state}", { n: j.number, state: STATES[j.state] || j.state }));
     $("print-file").value = "";
     $("print-name").value = "";
     await loadJobs();

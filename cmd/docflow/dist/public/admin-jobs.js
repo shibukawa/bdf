@@ -2,15 +2,15 @@
 // the route each took; a job not ended (or whose slip is still open) is
 // canceled here.
 
-import { $, api, button, cancellable, el, KINDS, legsOf, onChange, payloadBadge, sender, since, stateBadge, status } from "./admin.js";
+import { $, _, api, button, cancellable, el, KINDS, legsOf, onChange, payloadBadge, sender, since, stateBadge, status } from "./admin.js";
 
 let dest = new URLSearchParams(location.search).get("dest") || "";
 
 async function loadNodes() {
   const topo = await api("GET", "/api/topology");
   if (dest && !topo.some((n) => n.name === dest)) dest = "";
-  const options = [el("option", "All jobs", { value: "", selected: dest === "" })];
-  for (const n of topo) options.push(el("option", `${n.name} (${KINDS[n.kind] || n.kind})`, { value: n.name, selected: n.name === dest }));
+  const options = [el("option", _("All jobs"), { value: "", selected: dest === "" })];
+  for (const n of topo) options.push(el("option", _("{name} ({kind})", { name: n.name, kind: KINDS[n.kind] || n.kind }), { value: n.name, selected: n.name === dest }));
   $("jobs-dest").replaceChildren(...options);
 }
 
@@ -30,13 +30,13 @@ async function loadJobs() {
     );
     tr.children[1].append(j.name || "", " ", payloadBadge(j));
     tr.children[5].append(stateBadge(j.state));
-    tr.lastChild.append(el("a", "Document", { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` }));
-    if (cancellable(j)) tr.lastChild.append(button("Cancel", () => api("POST", `/api/jobs/${j.id}/cancel`), "btn btn-xs btn-ghost text-error"));
+    tr.lastChild.append(el("a", _("Document"), { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` }));
+    if (cancellable(j)) tr.lastChild.append(button(_("Cancel"), () => api("POST", `/api/jobs/${j.id}/cancel`), "btn btn-xs btn-ghost text-error"));
     return tr;
   });
   if (!rows.length) {
     const tr = el("tr");
-    tr.append(el("td", "No jobs yet", { colSpan: 8, className: "text-base-content/50" }));
+    tr.append(el("td", _("No jobs yet"), { colSpan: 8, className: "text-base-content/50" }));
     rows.push(tr);
   }
   $("jobs").replaceChildren(...rows);
