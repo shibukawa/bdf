@@ -8,11 +8,11 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
+	github.com/molecule-man/go-brrr v1.3.0 // indirect
 	github.com/shibukawa/tinygodriver v1.3.5 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.61.0 // indirect

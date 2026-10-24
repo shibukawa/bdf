@@ -8,7 +8,7 @@ import (
 	"math/bits"
 	"sync"
 
-	"github.com/andybalholm/brotli"
+	brrr "github.com/molecule-man/go-brrr"
 )
 
 // Available reports whether the Brotli encoder is compiled in.
@@ -38,12 +38,15 @@ func compress(b []byte) ([]byte, error) {
 		lgwin = max(minLGWin, bits.Len(uint(len(b)+15)))
 	}
 	pool := &writers[lgwin-minLGWin]
-	var w *brotli.Writer
+	var w *brrr.Writer
 	if reused := pool.Get(); reused != nil {
-		w = reused.(*brotli.Writer)
+		w = reused.(*brrr.Writer)
 		w.Reset(&out)
 	} else {
-		w = brotli.NewWriterOptions(&out, brotli.WriterOptions{Quality: quality, LGWin: lgwin})
+		var err error
+		if w, err = brrr.NewWriterOptions(&out, quality, brrr.WriterOptions{LGWin: lgwin}); err != nil {
+			return nil, err
+		}
 	}
 	defer func() {
 		w.Reset(io.Discard) // not the caller's buffer

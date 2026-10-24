@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andybalholm/brotli"
+	brrr "github.com/molecule-man/go-brrr"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
@@ -336,7 +336,7 @@ func fontPart(t *testing.T, b []byte) *sfnt.Font {
 			}
 			entries = append(entries, e)
 		}
-		data, err := io.ReadAll(brotli.NewReader(bytes.NewReader(b[p : p+int(be32(b, 20))])))
+		data, err := io.ReadAll(brrr.NewReader(bytes.NewReader(b[p : p+int(be32(b, 20))])))
 		if err != nil {
 			t.Fatal(err)
 		}

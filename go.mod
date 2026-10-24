@@ -4,8 +4,8 @@ go 1.27.0
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.3
-	github.com/andybalholm/brotli v1.2.6
 	github.com/klauspost/compress v1.20.3
+	github.com/molecule-man/go-brrr v1.3.0
 	github.com/pdfcpu/pdfcpu v0.16.3
 	github.com/shibukawa/popcornweb v0.5.14
 	github.com/shibukawa/tinybind-go v0.5.34

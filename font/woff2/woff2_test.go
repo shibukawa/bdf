@@ -10,7 +10,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/andybalholm/brotli"
+	brrr "github.com/molecule-man/go-brrr"
 )
 
 type point struct {
@@ -370,7 +370,7 @@ func decode(t *testing.T, w []byte) (flavor uint32, tables map[string][]byte, or
 		entries = append(entries, e)
 	}
 	compressed := int(binary.BigEndian.Uint32(w[20:]))
-	data, err := io.ReadAll(brotli.NewReader(bytes.NewReader(w[r.p : r.p+compressed])))
+	data, err := io.ReadAll(brrr.NewReader(bytes.NewReader(w[r.p : r.p+compressed])))
 	if err != nil {
 		t.Fatal(err)
 	}
