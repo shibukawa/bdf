@@ -246,7 +246,7 @@ func (in *interp) emitRun(f *pdfFont, run *textRun) {
 		in.obj.FillText(draw, x, 0, adv)
 	case 1, 5:
 		in.syncStroke()
-		in.syncLine()
+		in.syncTextLine()
 		in.syncAlpha(true)
 		in.obj.StrokeText(draw, x, 0, adv)
 	case 2, 6:
@@ -254,7 +254,7 @@ func (in *interp) emitRun(f *pdfFont, run *textRun) {
 		in.syncAlpha(false)
 		in.obj.FillText(draw, x, 0, adv)
 		in.syncStroke()
-		in.syncLine()
+		in.syncTextLine()
 		in.syncAlpha(true)
 		in.obj.StrokeText(draw, x, 0, adv)
 	default: // invisible: keep the text for search and selection
