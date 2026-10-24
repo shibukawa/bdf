@@ -9,8 +9,9 @@ import (
 	"testing"
 )
 
-// People with a role: topology changes the topology, audit reads the log
-// and every job; a reprint sends a job's document again as the person.
+// People with a role: topology changes the topology and sends to any
+// node, audit reads the log and every job; a reprint sends a job's
+// document again as the person.
 func TestRolesAndReprint(t *testing.T) {
 	e := newEnv(t, func(o *Options) {
 		withViewers(o)
@@ -29,8 +30,9 @@ func TestRolesAndReprint(t *testing.T) {
 	e.display("office", Node{})
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Scope: ScopeGroup, Owner: "warehouse-b"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/a-in", Node{Kind: KindUpload, To: []string{"wh-a"}, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
 	doc := testDoc(t, 1)
-	if res, out := e.as("alice", "POST", "/api/destinations/wh-a/jobs?name=alice-a", doc); res.StatusCode != http.StatusCreated {
+	if res, out := e.as("alice", "POST", "/api/destinations/a-in/jobs?name=alice-a", doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("alice: %d %s", res.StatusCode, out)
 	}
 	// the role topology changes the topology (through the API too), the
@@ -63,12 +65,28 @@ func TestRolesAndReprint(t *testing.T) {
 		t.Fatalf("audrey's topology has settings: %d %s", res.StatusCode, out)
 	}
 
+	// a person sends to a source alone; the role topology to any node, to
+	// try it out, and the role audit as everyone
+	if res, out := e.as("audrey", "POST", "/api/destinations/office/jobs?name=audrey", doc); res.StatusCode != http.StatusForbidden || !bytes.Contains(out, []byte("not a source")) {
+		t.Fatalf("audrey to a display: %d %s", res.StatusCode, out)
+	}
+	if res, out := e.as("tess", "POST", "/api/destinations/office/jobs?name=tess", doc); res.StatusCode != http.StatusCreated {
+		t.Fatalf("tess to a display: %d %s", res.StatusCode, out)
+	}
+	// the scopes still hold: the groups' nodes are their members'
+	var ds []Destination
+	_, out = e.as("tess", "GET", "/api/destinations", nil)
+	if json.Unmarshal(out, &ds); len(ds) != 2 || ds[0].Name != "office" || ds[1].Name != "q" {
+		t.Fatalf("tess sends to %+v", ds)
+	}
+
 	// a reprint: the person's own job again, as theirs, to a node they may
-	// send to; a member of the group reprints the group's
+	// send to; a member of the group reprints the group's, to a source, or
+	// to the node it was sent to
 	var again Job
 	res, out := e.as("alice", "POST", "/api/jobs/"+jobs[0].ID+"/reprint", nil)
 	json.Unmarshal(out, &again)
-	if res.StatusCode != http.StatusCreated || again.Dest != "wh-a" || again.Source != "reprint" || again.Name != "alice-a" || again.SubmittedBy.ID != "u-alice" || again.Number == jobs[0].Number {
+	if res.StatusCode != http.StatusCreated || again.Dest != "a-in" || again.Source != "reprint" || again.Name != "alice-a" || again.SubmittedBy.ID != "u-alice" || again.Number == jobs[0].Number {
 		t.Fatalf("reprint: %d %+v", res.StatusCode, again)
 	}
 	if res, _ := e.as("alice", "POST", "/api/jobs/"+jobs[0].ID+"/reprint", map[string]string{"to": "wh-b"}); res.StatusCode != http.StatusForbidden {
@@ -80,8 +98,14 @@ func TestRolesAndReprint(t *testing.T) {
 	res, out = e.do(nil, "POST", "/api/destinations/wh-b/jobs?name=wms-b", "wms:s3cret", doc)
 	var wmsB Job
 	json.Unmarshal(out, &wmsB)
-	if res, out := e.as("bob", "POST", "/api/jobs/"+wmsB.ID+"/reprint", map[string]string{"to": "office"}); res.StatusCode != http.StatusCreated {
-		t.Fatalf("bob reprints his group's to the office: %d %s", res.StatusCode, out)
+	if res, out := e.as("bob", "POST", "/api/jobs/"+wmsB.ID+"/reprint", nil); res.StatusCode != http.StatusCreated {
+		t.Fatalf("bob reprints his group's where it went: %d %s", res.StatusCode, out)
+	}
+	if res, out := e.as("bob", "POST", "/api/jobs/"+wmsB.ID+"/reprint", map[string]string{"to": "office"}); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("bob reprints his group's to a display: %d %s", res.StatusCode, out)
+	}
+	if res, out := e.as("alice", "POST", "/api/jobs/"+jobs[0].ID+"/reprint", map[string]string{"to": "office"}); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("alice reprints to a display: %d %s", res.StatusCode, out)
 	}
 	var log []AuditEntry
 	json.Unmarshal(e.admin("GET", "/api/audit?limit=20", nil, http.StatusOK), &log)

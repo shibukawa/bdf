@@ -27,7 +27,7 @@ Drag the background to pan, turn the wheel or pinch to zoom, and Fit brings the 
 
 Without the role topology, the page only looks. Click a node, and the sidebar shows its description, the counts of your jobs there, where it sends, what it takes and sends on, and:
 
-- **Print here**, when you may send to the node ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); otherwise "You may not print here";
+- **Print here**, at a source you may send to ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); at a source you may not send to, "You may not print here"; at another node, that documents come in at a source;
 - **Jobs here**: your jobs that were sent to the node or reached it, with their state, who sent them, when and their route; Document downloads one, and Reprint here sends it again to this node, as a new job of yours.
 
 A sink also shows the latest documents it kept, a downloader the entries listed there that you may read ([Downloaders](downloads.md)), and a CUPS server (source) how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).

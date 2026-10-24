@@ -92,13 +92,20 @@ func TestDevRoster(t *testing.T) {
 	if _, err := a.m.PutNode(context.Background(), docflow.Node{Name: "office", Kind: docflow.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
+	// the sources in front of them: people send there, the admin anywhere
+	if _, err := a.m.PutNode(context.Background(), docflow.Node{Name: "wh-a-in", Kind: docflow.KindUpload, To: []string{"wh-a"}, Scope: docflow.ScopeGroup, Owner: "warehouse-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.m.PutNode(context.Background(), docflow.Node{Name: "office-in", Kind: docflow.KindUpload, To: []string{"office"}}); err != nil {
+		t.Fatal(err)
+	}
 	for who, want := range map[string]struct {
 		admin int
 		dests string
 	}{
-		"admin":    {http.StatusOK, "office,wh-a"},
-		"member":   {http.StatusForbidden, "office,wh-a"},
-		"outsider": {http.StatusForbidden, "office"},
+		"admin":    {http.StatusOK, "office,office-in,wh-a,wh-a-in"},
+		"member":   {http.StatusForbidden, "office-in,wh-a-in"},
+		"outsider": {http.StatusForbidden, "office-in"},
 	} {
 		srv.LoginAs(t, who)
 		jar, _ := cookiejar.New(nil)

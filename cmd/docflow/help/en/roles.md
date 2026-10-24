@@ -8,8 +8,8 @@ Every page but the devices' `/tablet` is for a person signed in at the organizat
 
 | Role | Pages | |
 |---|---|---|
-| everyone signed in | Jobs, Topology, Help | print to the nodes they may send to; see their jobs and their groups' |
-| `topology` | Topology as the editor; Admin → Apps, Inboxes, Jobs, Deliveries | lay out the network and what is at it — nodes, templates, keys, apps, devices, inboxes, deliveries — and see every job |
+| everyone signed in | Jobs, Topology, Help | print to the sources they may send to; see their jobs and their groups' |
+| `topology` | Topology as the editor; Admin → Apps, Inboxes, Jobs, Deliveries | lay out the network and what is at it — nodes, templates, keys, apps, devices, inboxes, deliveries — and see every job; print to any node they may send to, not only to the sources, to try the topology out |
 | `audit` | Audit | the audit log, and every job (reading) |
 | administrator | all | both roles, and the API as the admin token |
 
@@ -25,7 +25,7 @@ Every node has a scope and an owner, set in its sidebar on the topology:
 | `group`, with a group as owner | the group's members | the group's: its members see them |
 | `personal`, with a person's email as owner | that person | theirs |
 
-The scope of an inbox also says who works it, besides the role topology: the members of a `group` inbox, the owner of a `personal` one; a `shared` inbox is the role topology's ([Who works an inbox](inboxes.md#workers)). A display without a group of its own gives its jobs its fallback printer's group. An app's jobs are the app's group's when the node gives them none. The scope says nothing to applications and IPP clients: an uploader takes what its key or its apps send, and IPP what the submit tokens allow ([Where documents come in](entries.md)).
+From the pages, a person sends to the sources alone (an uploader, a CUPS server, an S3 trigger: [From the pages](entries.md#pages)); the scope of another node says whose its jobs are, and who with the role `topology` sends to it. The scope of an inbox also says who works it, besides the role topology: the members of a `group` inbox, the owner of a `personal` one; a `shared` inbox is the role topology's ([Who works an inbox](inboxes.md#workers)). A display without a group of its own gives its jobs its fallback printer's group. An app's jobs are the app's group's when the node gives them none. The scope says nothing to applications and IPP clients: an uploader takes what its key or its apps send, and IPP what the submit tokens allow ([Where documents come in](entries.md)).
 
 ## Who sees a job {#who-sees}
 

@@ -179,10 +179,14 @@ type Destination struct {
 	Title string `json:"title,omitempty"`
 	Scope string `json:"scope,omitempty"`
 	Owner string `json:"owner,omitempty"`
+	// Source tells an entry, where documents come into the topology: the
+	// one kind of node a person without the role topology sends to.
+	Source bool `json:"source,omitempty"`
 }
 
-// Destinations returns the nodes a viewer may send to: an app, the
-// entries that list it.
+// Destinations returns the nodes a viewer may send to: a person, the
+// sources of their scopes (all the nodes of them, with the role
+// topology); an app, the entries that list it.
 func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, error) {
 	topo, err := m.Topology(ctx)
 	if err != nil {
@@ -194,11 +198,14 @@ func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, e
 			continue // read from, never sent to
 		}
 		allowed := v.CanSendTo(n.Scope, n.Owner)
-		if v.Kind == PrincipalApp && !v.Admin {
+		switch {
+		case v.Kind == PrincipalApp && !v.Admin:
 			allowed = n.takesApp(v.ID)
+		case v.Kind == PrincipalUser:
+			allowed = v.maySendAt(&n.Node) == nil
 		}
 		if allowed {
-			out = append(out, Destination{Name: n.Name, Kind: n.Kind, Title: n.Title, Scope: n.Scope, Owner: n.Owner})
+			out = append(out, Destination{Name: n.Name, Kind: n.Kind, Title: n.Title, Scope: n.Scope, Owner: n.Owner, Source: isEntry(n.Kind)})
 		}
 	}
 	return out, nil

@@ -254,6 +254,24 @@ func (v *Viewer) CanSendTo(scope, owner string) bool {
 	return false
 }
 
+// maySendAt tells whether a person may send a document to a node from
+// the pages (the form of Jobs, Print here on the topology, a reprint): a
+// node of a scope they may send to (CanSendTo) that is a source, an entry
+// where documents come into the topology (an uploader, a CUPS server, an
+// S3 trigger), so that what an entry takes and sets holds for what people
+// send as for what computers and applications do. A person with the role
+// topology sends to any node, to try a part of the topology out. The
+// error says why not.
+func (v *Viewer) maySendAt(n *Node) error {
+	if !v.CanSendTo(n.Scope, n.Owner) {
+		return fmt.Errorf("you may not send to %s", n.Name)
+	}
+	if !isEntry(n.Kind) && !v.Can(RoleTopology) {
+		return fmt.Errorf("%s is not a source: documents come into the topology at a source (an uploader, a CUPS server), and you may send to one of them", n.Name)
+	}
+	return nil
+}
+
 // destScope tells a destination's scope and owner, and the group its
 // jobs get: the destination's, or else (a display's) its fallback
 // printer's, when that is a group's.

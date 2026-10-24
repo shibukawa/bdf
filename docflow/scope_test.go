@@ -43,7 +43,10 @@ func TestScope(t *testing.T) {
 	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-b-laser"}}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/office", Node{Kind: KindDisplay, Scope: ScopeShared}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/alice-desk", Node{Kind: KindDisplay, Scope: ScopePersonal, Owner: "alice@example.com"}, http.StatusOK)
-	e.admin("PUT", "/api/nodes/team-a", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
+	// the sources people send to: a shared one, a group's and a person's
+	e.admin("PUT", "/api/nodes/lobby", Node{Kind: KindUpload, To: []string{"office"}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/team-a", Node{Kind: KindUpload, To: []string{"wh-a"}, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/alice-in", Node{Kind: KindUpload, To: []string{"alice-desk"}, Scope: ScopePersonal, Owner: "alice@example.com"}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindDisplay, Scope: ScopeGroup}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindDisplay, Scope: "team", Owner: "x"}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeShared, Owner: "x"}, http.StatusBadRequest)
@@ -66,29 +69,33 @@ func TestScope(t *testing.T) {
 		json.Unmarshal(out, &j)
 		return &j
 	}
-	mine := submit("alice", "office", "alice-office", http.StatusCreated)
+	mine := submit("alice", "lobby", "alice-office", http.StatusCreated)
 	if by := mine.SubmittedBy; by == nil || *by != (Principal{Kind: PrincipalUser, ID: "u-alice", Name: "Alice", Via: ViaOIDC}) || mine.ClaimedUser != "someone-else" || mine.Group != "" {
 		t.Fatalf("alice's job %+v by %+v", mine, mine.SubmittedBy)
 	}
-	submit("alice", "alice-desk", "alice-desk", http.StatusCreated)
-	if j := submit("alice", "wh-b", "alice-wh-b", http.StatusCreated); j.Group != "warehouse-b" {
+	submit("alice", "alice-in", "alice-desk", http.StatusCreated)
+	// a person sends to a source alone; an administrator (the role
+	// topology) to any node, and a display gives a job its fallback
+	// printer's group
+	submit("alice", "office", "alice-board", http.StatusForbidden)
+	if j := submit("root", "wh-b", "root-wh-b", http.StatusCreated); j.Group != "warehouse-b" {
 		t.Fatalf("the fallback printer's group: %+v", j)
 	}
 	if j := submit("alice", "team-a", "alice-team", http.StatusCreated); j.Group != "warehouse-a" {
-		t.Fatalf("a group's queue: %+v", j)
+		t.Fatalf("a group's source: %+v", j)
 	}
-	submit("bob", "wh-a", "bob-wh-a", http.StatusForbidden)
-	submit("bob", "alice-desk", "bob-desk", http.StatusForbidden)
+	submit("bob", "team-a", "bob-team-a", http.StatusForbidden)
+	submit("bob", "alice-in", "bob-desk", http.StatusForbidden)
 	if j := submit("wms", "wh-a", "wms-wh-a", http.StatusCreated); j.Group != "warehouse-a" || j.SubmittedBy.Kind != PrincipalToken || j.ClaimedUser != "sato" {
 		t.Fatalf("wms's job %+v", j)
 	}
 	submit("wms", "wh-b", "wms-wh-b", http.StatusCreated)
-	bobs := submit("bob", "office", "bob-office", http.StatusCreated)
+	bobs := submit("bob", "lobby", "bob-office", http.StatusCreated)
 	// a page of another site cannot send as the person
 	res, _ := e.doWith(func(r *http.Request) {
 		r.Header.Set("X-Test-Viewer", "alice")
 		r.Header.Set("Sec-Fetch-Site", "cross-site")
-	}, "POST", "/api/destinations/office/jobs", doc)
+	}, "POST", "/api/destinations/lobby/jobs", doc)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("cross-site: %d", res.StatusCode)
 	}
@@ -104,9 +111,9 @@ func TestScope(t *testing.T) {
 		return names
 	}
 	for who, want := range map[string][]string{
-		"alice": {"wms-wh-a", "alice-team", "alice-wh-b", "alice-desk", "alice-office"},
-		"bob":   {"bob-office", "wms-wh-b", "alice-wh-b"},
-		"root":  {"bob-office", "wms-wh-b", "wms-wh-a", "alice-team", "alice-wh-b", "alice-desk", "alice-office"},
+		"alice": {"wms-wh-a", "alice-team", "alice-desk", "alice-office"},
+		"bob":   {"bob-office", "wms-wh-b", "root-wh-b"},
+		"root":  {"bob-office", "wms-wh-b", "wms-wh-a", "alice-team", "root-wh-b", "alice-desk", "alice-office"},
 	} {
 		if got := sees(who); !slices.Equal(got, want) {
 			t.Errorf("%s sees %q; want %q", who, got, want)
@@ -117,16 +124,16 @@ func TestScope(t *testing.T) {
 	}
 	// a member of the group sees a job, but only its sender cancels it
 	if res, _ := e.as("bob", "GET", "/api/jobs/"+jobID(3), nil); res.StatusCode != http.StatusOK {
-		t.Errorf("bob on alice's warehouse-b job: %d", res.StatusCode)
+		t.Errorf("bob on root's warehouse-b job: %d", res.StatusCode)
 	}
 	if res, _ := e.as("bob", "POST", "/api/jobs/"+jobID(3)+"/cancel", nil); res.StatusCode != http.StatusForbidden {
-		t.Errorf("bob cancels alice's job: %d", res.StatusCode)
+		t.Errorf("bob cancels root's job: %d", res.StatusCode)
 	}
 	if res, _ := e.as("alice", "GET", "/api/jobs/"+bobs.ID, nil); res.StatusCode != http.StatusNotFound {
 		t.Errorf("alice on bob's job: %d", res.StatusCode)
 	}
-	if res, _ := e.as("alice", "POST", "/api/jobs/"+jobID(3)+"/cancel", nil); res.StatusCode != http.StatusOK {
-		t.Errorf("alice cancels her job: %d", res.StatusCode)
+	if res, _ := e.as("root", "POST", "/api/jobs/"+jobID(3)+"/cancel", nil); res.StatusCode != http.StatusOK {
+		t.Errorf("root cancels their job: %d", res.StatusCode)
 	}
 
 	ds, err := e.m().Destinations(ctx, viewers["alice"])
@@ -135,10 +142,25 @@ func TestScope(t *testing.T) {
 	}
 	var names []string
 	for _, d := range ds {
+		if !d.Source {
+			t.Errorf("alice's %+v is no source", d)
+		}
 		names = append(names, d.Name)
 	}
-	if !slices.Equal(names, []string{"alice-desk", "office", "team-a", "wh-a", "wh-b"}) {
+	if !slices.Equal(names, []string{"alice-in", "lobby", "team-a"}) {
 		t.Errorf("alice sends to %q", names)
+	}
+	// an administrator chooses among every node of theirs, the sources
+	// marked
+	names = names[:0]
+	ds, _ = e.m().Destinations(ctx, viewers["root"])
+	for _, d := range ds {
+		if d.Source {
+			names = append(names, d.Name)
+		}
+	}
+	if len(ds) != 8 || !slices.Equal(names, []string{"alice-in", "lobby", "team-a"}) {
+		t.Errorf("root sends to %+v", ds)
 	}
 
 	// the API: an admin's session, as the admin token; others are refused
@@ -171,7 +193,7 @@ func TestScope(t *testing.T) {
 	}
 	var topo []TopoNode
 	json.Unmarshal(out, &topo)
-	if len(topo) != 6 || topo[4].Name != "wh-b" || topo[4].Fallback == nil || topo[4].Fallback.Printer != "wh-b-laser" || topo[2].To[0] != "wh-a" {
+	if len(topo) != 8 || topo[6].Name != "wh-b" || topo[6].Fallback == nil || topo[6].Fallback.Printer != "wh-b-laser" || topo[4].To[0] != "wh-a" {
 		t.Fatalf("alice's topology %+v", topo)
 	}
 	if _, out := e.as("root", "GET", "/api/topology", nil); !strings.Contains(string(out), `"scope":"group"`) {
@@ -215,7 +237,7 @@ func TestScope(t *testing.T) {
 	if res.StatusCode != http.StatusNotModified {
 		t.Fatalf("live with its revision: %d", res.StatusCode)
 	}
-	submit("alice", "office", "alice-again", http.StatusCreated)
+	submit("alice", "lobby", "alice-again", http.StatusCreated)
 	if again := liveOf("alice"); again.Rev == a.Rev || again.Nodes["office"].Open != 2 {
 		t.Fatalf("live after a job: %+v", again)
 	}
