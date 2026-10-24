@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/andybalholm/brotli"
+	brrr "github.com/molecule-man/go-brrr"
 )
 
 func TestDecodeRoundTrip(t *testing.T) {
@@ -77,7 +77,10 @@ func TestDecodeRejectsGarbage(t *testing.T) {
 func packed(t *testing.T, numTables int, dir []byte, write func(w io.Writer)) []byte {
 	t.Helper()
 	var comp bytes.Buffer
-	w := brotli.NewWriterOptions(&comp, brotli.WriterOptions{Quality: 1})
+	w, err := brrr.NewWriter(&comp, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	write(w)
 	if err := w.Close(); err != nil {
 		t.Fatal(err)

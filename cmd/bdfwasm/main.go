@@ -19,7 +19,7 @@
 // fills the templates of forms (see the end of this comment).
 // bdf_noconv leaves out the image and WOFF2 encoders: a document drawn
 // where it is converted gains nothing from them. It leaves out Brotli
-// altogether, whose tables alone would add 1.7 MB to the Office module:
+// altogether, whose decoder alone would add 0.45 MB to the Office module:
 // the Parquet converter reads no Brotli in any js build
 // (converter/parquet/brotli_js.go), and the font converter no WOFF2 file.
 // bdf_woff2dec brings the decoder of WOFF2 back by itself, for the preview

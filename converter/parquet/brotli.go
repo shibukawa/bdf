@@ -5,12 +5,14 @@ package parquet
 import (
 	"bytes"
 
-	"github.com/andybalholm/brotli"
+	brrr "github.com/molecule-man/go-brrr"
 )
 
 // brotliDecompress decompresses Brotli. The browser build leaves it out
-// (brotli_js.go): the package's tables add 1.7 MB to the module, for a
-// codec few files use.
+// (brotli_js.go): the decoder adds 0.45 MB to the module, for a codec few
+// files use.
 func brotliDecompress(src []byte, size int) ([]byte, error) {
-	return readSized(brotli.NewReader(bytes.NewReader(src)), size)
+	r := brrr.NewReader(bytes.NewReader(src))
+	defer r.Close()
+	return readSized(r, size)
 }
