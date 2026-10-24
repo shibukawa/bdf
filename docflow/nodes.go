@@ -265,7 +265,8 @@ func (m *Manager) Nodes(ctx context.Context) ([]Node, error) {
 
 // DeleteNode removes a node, with a template node's templates. One
 // another node sends to stays; an inbox with items held stays. A
-// display's slips and devices stay until it is added again.
+// display's slips and devices stay until it is added again; an
+// archive's store keeps what it wrote, not the list of the latest.
 func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 	rec, err := m.st.db.Get[nodeRecord](ctx, name)
 	if err != nil {
@@ -288,6 +289,8 @@ func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 		return m.removeTemplatesOf(ctx, name)
 	case KindSink:
 		return m.dropSink(ctx, name)
+	case KindArchive:
+		return m.dropArchived(ctx, name)
 	case KindDownload:
 		return m.dropDownload(ctx, name)
 	}

@@ -131,7 +131,7 @@ Signs the `.bdf` document that reaches it with Docflow's key, as a witness, and 
 
 ## Inbox {#inbox}
 
-Holds the job until someone releases it to nodes, or discards it: a person on the Inboxes page ([Inboxes](inboxes.md#inboxes)), or an application through the API at `/api/inbox/<name>` ([The inboxes' API](inboxes.md#api)). Released and discarded items stay shown for `keep`. A [downloader](#download) in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded. Who works it is its scope's people and its apps ([Who works an inbox](inboxes.md#workers)).
+Holds the job until someone releases it to nodes, or discards it: a person on the Inboxes page ([Inboxes](inboxes.md#inboxes)), or an application through the API at `/api/inbox/<name>` ([The inboxes' API](inboxes.md#api)). Released and discarded items stay shown for `keep`. On the topology, its sidebar shows what it holds, each with its first page, worked there as on the Inboxes page; the newest item's first page shows on the node. A [downloader](#download) in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded. Who works it is its scope's people and its apps ([Who works an inbox](inboxes.md#workers)).
 
 | Setting | |
 |---|---|
@@ -142,7 +142,7 @@ Holds the job until someone releases it to nodes, or discards it: a person on th
 
 ## Display {#display}
 
-Shows the job as a slip on the devices enrolled at the display — the tablets of a location — and prints on paper, on its fallback printer, what nobody opened within `fallback.after`, or every unopened slip while no device is connected. It takes `.bdf` documents only. [Display boards and devices](displays.md) has the devices and the board.
+Shows the job as a slip on the devices enrolled at the display — the tablets of a location — and prints on paper, on its fallback printer, what nobody opened within `fallback.after`, or every unopened slip while no device is connected. It takes `.bdf` documents only. On the topology, its sidebar shows the slips on its board, each with its first page, and the newest open slip's first page shows on the node ([The board](displays.md#board)). [Display boards and devices](displays.md) has the devices and the board.
 
 | Setting | |
 |---|---|
@@ -175,7 +175,7 @@ The keys `ipp.job-account-id` and the others go on to the queue as they go on to
 
 ## Archive {#archive}
 
-Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: a downloader, which lists it ([Downloaders](downloads.md)).
+Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: a downloader, which lists it ([Downloaders](downloads.md)). On the topology, the archive shows the latest documents it wrote (50) to those who see their jobs: the first page of the newest on the node, the first page of each in the sidebar, and a click shows every page, drawn from the store, with its download (in the audit log). An older one goes from that list, not from the store.
 
 | Setting | |
 |---|---|

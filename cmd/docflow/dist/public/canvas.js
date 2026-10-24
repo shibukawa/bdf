@@ -358,12 +358,17 @@ export function createCanvas(svg, opts = {}) {
     return lines;
   }
 
-  // latestOf is the latest document a sink keeps, whose first page it
-  // shows.
-  const latestOf = (n) => (n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) || "" : "");
+  // thumbOf is where the first page a node shows is drawn, 96 pixels
+  // wide: of the newest document a sink keeps, slip a display shows open,
+  // item an inbox holds or document an archive wrote, of those the person
+  // sees (the activity's thumb; a sink's latest before it is read).
+  const thumbOf = (n) => {
+    const at = live ? (live.nodes[n.name] || {}).thumb : n.kind === "sink" && n.latest ? `/api/jobs/${n.latest}/pages/1.png` : "";
+    return at ? at + (at.includes("?") ? "&" : "?") + "w=96" : "";
+  };
 
   // linesOf are the lines of a node's description on the canvas.
-  const linesOf = (n) => (n.description ? wrap(n.description, NODE_W - 20 - (latestOf(n) ? 44 : 0), MAX_LINES) : []);
+  const linesOf = (n) => (n.description ? wrap(n.description, NODE_W - 20 - (thumbOf(n) ? 44 : 0), MAX_LINES) : []);
   const heightOfLines = (count) => (count ? DESC_Y + (count - 1) * LINE_H + 11 : NODE_H);
   // a node with several ports is as tall as they need, below its title bar
   const heightOfPorts = (n) => {
@@ -708,15 +713,16 @@ export function createCanvas(svg, opts = {}) {
     const lines = linesOf(n);
     const h = Math.max(heightOfLines(lines.length), heightOfPorts(n));
     if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
-    // a sink shows the first page of the latest document it keeps
-    const latest = latestOf(n);
+    // a sink, a display, an inbox and an archive show the first page of
+    // the newest document there
+    const thumb = thumbOf(n);
     // the title (the name when it has none) is the title bar's; the
     // kind, the name and what is at the node are the line under it
     const parts = [];
     if (n.title && n.title !== n.name) parts.push(n.name);
     parts.push(...counts(n));
     const first = g.childElementCount;
-    box(g, n.kind, n.title || n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
+    box(g, n.kind, n.title || n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, thumb ? 14 : 20, thumb ? 24 : 32);
     // a node nothing fits any more is marked
     if (t.dead) {
       g.children[first].setAttribute("stroke", BROKEN_COLOR);
@@ -742,9 +748,9 @@ export function createCanvas(svg, opts = {}) {
       badge.append(x);
       g.append(badge);
     }
-    if (latest) {
+    if (thumb) {
       g.append(svgEl("rect", { x: NODE_W - 46, y: 4, width: 40, height: 46, rx: "3", fill: "#fff", stroke: "#94a3b8" }));
-      g.append(svgEl("image", { href: `/api/jobs/${latest}/pages/1.png?w=96`, x: NODE_W - 45, y: 5, width: 38, height: 44, preserveAspectRatio: "xMidYMin slice" }));
+      g.append(svgEl("image", { href: thumb, x: NODE_W - 45, y: 5, width: 38, height: 44, preserveAspectRatio: "xMidYMin slice" }));
     }
     if (ENTRY.has(n.kind)) {
       // what an entry receives comes from outside: computers print to a
