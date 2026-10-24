@@ -1,7 +1,6 @@
 package pdf
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -286,7 +285,7 @@ func (p *pdf) decodeStreamUpTo(sd *types.StreamDict, limit int64, cut bool) ([]b
 		if last {
 			max, cutHere = limit, cut
 		}
-		out, err := decodeFilter(f.Name, parms, data, max)
+		out, err := decodeFilter(f.Name, parms, data, max, cutHere)
 		if err != nil {
 			return nil, "", fmt.Errorf("%s: %w", f.Name, err)
 		}
@@ -302,10 +301,12 @@ func (p *pdf) decodeStreamUpTo(sd *types.StreamDict, limit int64, cut bool) ([]b
 }
 
 // decodeFilter decodes data with one filter. It returns a little more than
-// max bytes of a stream that is longer, and may leave the rest undecoded.
-// pdfcpu's filters take the parameters and the data as they are, and panic
-// or never return on some: those are checked or decoded here.
-func decodeFilter(name string, parms map[string]int, data []byte, max int64) ([]byte, error) {
+// max bytes of a stream that is longer, and may leave the rest undecoded;
+// sized says that max is what the stream is expected to hold. Flate and
+// RunLength are decoded here (flate.go); pdfcpu's filters take the
+// parameters and the data as they are, and panic or never return on some:
+// those are checked here.
+func decodeFilter(name string, parms map[string]int, data []byte, max int64, sized bool) ([]byte, error) {
 	switch name {
 	case filter.RunLength:
 		return decodeRunLength(data, max), nil
@@ -317,23 +318,13 @@ func decodeFilter(name string, parms map[string]int, data []byte, max int64) ([]
 		if err := checkPredictor(parms, len(data)); err != nil {
 			return nil, err
 		}
+		return inflateUpTo(data, parms, max, sized)
 	}
 	fi, err := filter.NewFilter(name, parms)
 	if err != nil {
 		return nil, err
 	}
 	switch name {
-	case filter.Flate:
-		// pdfcpu returns what it read with io.EOF for a stream shorter than
-		// the length asked for.
-		r, err := fi.DecodeLength(bytesReader(data), max+1)
-		if b, ok := r.(*bytes.Buffer); ok && b != nil && (err == nil || err == io.EOF) {
-			return b.Bytes(), nil
-		}
-		if err == nil {
-			err = io.ErrUnexpectedEOF
-		}
-		return nil, err
 	case filter.LZW:
 		// pdfcpu returns nothing but io.EOF for a stream shorter than the
 		// length asked for: then the stream is short enough to decode whole.
@@ -353,11 +344,10 @@ func decodeFilter(name string, parms map[string]int, data []byte, max int64) ([]
 	return readAll(r)
 }
 
-// checkPredictor checks the parameters of a Flate predictor, which pdfcpu
-// takes as they are: it divides by a row of no bytes, or reads such rows for
-// ever, and makes its rows before it reads any data. n is the number of
-// bytes to decode: deflate gives at most 1032 bytes for one, so that a
-// longer row cannot be a row of this stream.
+// checkPredictor checks the parameters of a Flate predictor before any data
+// is read, so that no row is of no bytes, or longer than the stream can be.
+// n is the number of bytes to decode: deflate gives at most 1032 bytes for
+// one, so that a longer row cannot be a row of this stream.
 func checkPredictor(parms map[string]int, n int) error {
 	if pr, ok := parms["Predictor"]; !ok || pr <= 1 {
 		return nil
