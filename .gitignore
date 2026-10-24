@@ -182,8 +182,10 @@ examples/print-server/data/
 # files are committed.
 /.pwstorybook/
 /.log/
-# pw build --target=… stages its artifacts here.
+# pw build --target=… stages its artifacts here, and pw build writes the
+# binary to bin (popcornweb.toml build.output).
 /.pw/
+/bin/
 docflow.db
 # pw generate builds Docflow's public tree (cmd/docflow/
 # dist/public, embedded) and keeps its manifest, routes and caches beside

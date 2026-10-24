@@ -5,6 +5,12 @@
 name = "docflow"
 main = "./cmd/docflow"
 
+# go build names the binary after the main package and writes it to the
+# root, where the module's docflow package already is: pw build writes it
+# here instead.
+[build]
+output = "bin/docflow"
+
 [generate]
 handlers = ["cmd/docflow/handlers"]
 templates = ["cmd/docflow/handlers"]
