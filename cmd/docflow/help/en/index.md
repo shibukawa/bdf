@@ -6,7 +6,7 @@ Docflow is a software-defined document network. A document enters at an entry â€
 
 | Page | Who | What |
 |---|---|---|
-| Jobs | everyone signed in | print a document to a node you may send to; your jobs and your groups' ([Jobs](jobs.md)) |
+| Jobs | everyone signed in | print a document to a source you may send to; your jobs and your groups' ([Jobs](jobs.md)) |
 | Topology | everyone signed in | the network as it is laid out, with the activity of the jobs you may see; print at a node ([Looking](topology.md#view)) |
 | Topology, as the editor | the role topology | the same page: nodes placed, connected and set up ([The editor](topology.md#editor), [Node kinds](nodes.md)); Admin in the bar leads there |
 | Admin â†’ Apps | the role topology | the applications with credentials of their own: backends that send and read, and frontends in people's browsers ([Apps](entries.md#apps), [Frontends](downloads.md#frontends)) |
@@ -27,7 +27,7 @@ The process holds nothing: the records and the documents are in a store, so the 
 
 ## Where to start {#start}
 
-- **You print.** [Jobs](jobs.md). The nodes you may send to are those shared with everyone, your groups' and your own ([Scopes](roles.md#scopes)).
+- **You print.** [Jobs](jobs.md). You send to a source, where documents come in; the sources you may send to are those shared with everyone, your groups' and your own ([Scopes](roles.md#scopes)).
 - **You lay out the network.** [Topology](topology.md), then [Node kinds](nodes.md) for each node's settings, [What flows](flow.md) for what may be connected to what, [Templates and data](templates.md) when forms are filled from data, and [Display boards](displays.md) for the tablets.
 - **You connect an application.** [Where documents come in](entries.md): uploaders and their keys, apps and their tokens, CUPS server nodes and IPP; [Downloaders](downloads.md) for applications and people that fetch documents; then [The API](api.md).
 - **You run the service.** [Running the manager](operate.md).

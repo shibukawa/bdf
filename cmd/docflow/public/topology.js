@@ -22,7 +22,7 @@
 // and what a downloader lists, each document's pages in the lightbox.
 
 import { $, _, api, archivedSection, boardSection, button, changed, el, heldSection, keptSection, kindBadge, KINDS, legsOf, listedSection, locale, onChange, PAYLOADS, sender, sentences, since, stateBadge, STATES, status } from "./admin.js";
-import { createCanvas, iconOf, legend, payloadColor, PRINTS, roleColor, typeOf } from "./canvas.js";
+import { createCanvas, iconOf, legend, payloadColor, PRINTS, ROLE_OF, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: _("documents (PDF, Office, images, .bdf …)"), data: _("data (JSON, YAML, CSV, Excel, Parquet)") };
@@ -915,7 +915,8 @@ function viewSidebar() {
     });
     parts.push(form);
   } else {
-    parts.push(el("p", _("You may not print here."), { className: "text-xs text-base-content/60" }));
+    // documents come in at a source: a person prints at one of them
+    parts.push(el("p", ROLE_OF[n.kind] === "source" ? _("You may not print here.") : _("Documents come in at a source: print at an uploader or a CUPS server."), { className: "text-xs text-base-content/60" }));
   }
   const mine = jobs.filter((j) => j.dest === n.name || (j.legs || []).some((l) => l.node === n.name));
   const sec = el("div", undefined, { className: "flex flex-col gap-2 border-t border-base-300 pt-3" });

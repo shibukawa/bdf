@@ -4,7 +4,7 @@ A job enters the network at an entry: the form on the Jobs page, an uploader an 
 
 ## From the pages {#pages}
 
-The form on [Jobs](jobs.md#print), and the form of a node on the [Topology](topology.md#view) page, send a document to a node you may send to, as yourself: the job is yours, and its group the node's.
+The form on [Jobs](jobs.md#print), and the form of a node on the [Topology](topology.md#view) page, send a document as yourself to a source you may send to — an uploader, a CUPS server or an S3 trigger, the nodes where documents come in — so that what a source takes and sets holds for people as for applications: the job is yours, and its group the node's. A person with the role `topology` sends to any node of theirs from the Jobs page, to try a part of the topology out.
 
 ## IPP {#ipp}
 

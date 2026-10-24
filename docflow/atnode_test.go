@@ -33,9 +33,11 @@ func TestAtNodes(t *testing.T) {
 	e.node("vault", Node{Kind: KindArchive, Store: store}, http.StatusOK)
 	e.node("hold", Node{Kind: KindInbox, To: []string{"dock"}}, http.StatusOK)
 	e.node("in", Node{Kind: KindQueue, To: []string{"dock", "vault", "hold"}}, http.StatusOK)
+	// people send to sources alone
+	e.node("api", Node{Kind: KindUpload, To: []string{"in"}}, http.StatusOK)
 	doc := testDoc(t, 2)
 	for _, s := range []struct{ who, name string }{{"alice", "alice-1"}, {"wms", "wms-2"}, {"alice", "alice-3"}} {
-		path := "/api/destinations/in/jobs?name=" + s.name
+		path := "/api/destinations/api/jobs?name=" + s.name
 		var res *http.Response
 		var out []byte
 		if s.who == "wms" {

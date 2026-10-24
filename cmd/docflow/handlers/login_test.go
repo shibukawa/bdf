@@ -164,6 +164,7 @@ func TestLogin(t *testing.T) {
 	api("PUT", "/api/nodes/review-a", docflow.Node{Kind: docflow.KindInbox, To: []string{"wh-a"}, Scope: docflow.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
 	api("PUT", "/api/nodes/wh-b", docflow.Node{Kind: docflow.KindDisplay, Title: "Warehouse B", Scope: docflow.ScopeGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
 	api("PUT", "/api/nodes/office", docflow.Node{Kind: docflow.KindDisplay, Title: "Office"}, "t", http.StatusOK)
+	api("PUT", "/api/nodes/front", docflow.Node{Kind: docflow.KindUpload, Title: "Front desk", To: []string{"office"}}, "t", http.StatusOK)
 	api("POST", "/api/destinations/wh-a/jobs?name=picking-a&user=sato", doc(t), "wms:s3cret", http.StatusCreated)
 	api("POST", "/api/destinations/wh-b/jobs?name=picking-b", doc(t), "wms:s3cret", http.StatusCreated)
 
@@ -196,16 +197,20 @@ func TestLogin(t *testing.T) {
 		t.Errorf("/tablet: %d", code)
 	}
 
-	// a member of warehouse-a sends a job from the page, as herself
+	// a member of warehouse-a sends a job from the page, as herself, to a
+	// source
 	alice := s.login("alice")
-	if code, body := alice.post("/api/destinations/office/jobs?name=alice-memo&user=someone", doc(t)); code != http.StatusCreated {
+	if code, body := alice.post("/api/destinations/front/jobs?name=alice-memo&user=someone", doc(t)); code != http.StatusCreated {
 		t.Fatalf("alice's upload: %d %s", code, body)
 	}
 	if code, _ := alice.post("/api/destinations/wh-b/jobs?name=alice-wh-b", doc(t)); code != http.StatusForbidden {
 		t.Errorf("alice prints to warehouse-b: %d", code)
 	}
+	if code, _ := alice.post("/api/destinations/office/jobs?name=alice-office", doc(t)); code != http.StatusForbidden {
+		t.Errorf("alice prints to a display: %d", code)
+	}
 	bob := s.login("bob")
-	if code, body := bob.post("/api/destinations/office/jobs?name=bob-memo", doc(t)); code != http.StatusCreated {
+	if code, body := bob.post("/api/destinations/front/jobs?name=bob-memo", doc(t)); code != http.StatusCreated {
 		t.Fatalf("bob's upload: %d %s", code, body)
 	}
 

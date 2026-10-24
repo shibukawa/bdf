@@ -4,9 +4,9 @@ The Jobs page is everyone's: a form that prints a document, and the jobs you may
 
 ## Print a document {#print}
 
-Choose a node, a file and, if you like, a name for the job (the file's name otherwise), and press Print. The nodes listed are those you may send to: the shared ones, your groups' and your own ([Scopes](roles.md#scopes)). The job is received at that node and flows from it along the edges the administrator drew; where it went and what became of it is in the list below the form, and on the [Topology](topology.md#view) page.
+Choose a source, a file and, if you like, a name for the job (the file's name otherwise), and press Print. A source is a node where documents come into the topology — an uploader, a CUPS server ([Where documents come in](entries.md)) — and the sources listed are those you may send to: the shared ones, your groups' and your own ([Scopes](roles.md#scopes)). A person with the role `topology` may choose any node of theirs, listed apart under the sources, to try a part of the topology out from the middle. The job is received at that node and flows from it along the edges the administrator drew; where it went and what became of it is in the list below the form, and on the [Topology](topology.md#view) page.
 
-What a node takes depends on its kind ([Kinds of payload](flow.md#kinds)). A printer, a display, a queue or an inbox takes a document — PDF, Office documents (Word, Excel, PowerPoint), images and `.bdf`, among the formats the converter reads — and it is made into a `.bdf` document as it is received. A template node takes data (JSON, YAML, CSV, an Excel workbook) and fills a form with it; a convert node takes a file as it is; an uploader takes what its settings say. A file of a format the node does not take is refused, and the page says so.
+What a source takes is what its settings say: a document, or data for a template node after it ([Uploaders](entries.md#uploaders)). What another node takes depends on its kind ([Kinds of payload](flow.md#kinds)). A printer, a display, a queue or an inbox takes a document — PDF, Office documents (Word, Excel, PowerPoint), images and `.bdf`, among the formats the converter reads — and it is made into a `.bdf` document as it is received. A template node takes data (JSON, YAML, CSV, an Excel workbook) and fills a form with it; a convert node takes a file as it is. A file of a format the node does not take is refused, and the page says so.
 
 ## Your jobs {#list}
 
@@ -25,7 +25,7 @@ The list shows the jobs you sent and the jobs sent to your groups' nodes ([Who s
 
 **Document** downloads the `.bdf` document of the job: the one received, or the last one a template or a convert node made ([Payloads](flow.md#payloads)).
 
-**Reprint** sends the document again, as a new job of yours, to the node it went to; hold Shift while clicking to send it to the node chosen in the form above instead. The new job carries the sender's metadata of the old one, and you must be allowed to send to the node.
+**Reprint** sends the document again, as a new job of yours, to the node it went to; hold Shift while clicking to send it to the node chosen in the form above instead. The new job carries the sender's metadata of the old one, and you must be allowed to send to the node: to the node it went to, by its scope, whatever its kind (an application may have sent it to a display), and to another, when it is a source (with the role `topology`, any node).
 
 **Cancel** is the sender's and an administrator's; the group's members only see the job. A job is canceled while it has not ended, or while its slip is still open on a display board. Canceling takes its slips off the boards, discards its items in the inboxes, and withdraws its deliveries not yet sent; what a printer already printed stays printed.
 

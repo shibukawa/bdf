@@ -26,7 +26,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | | |
 |---|---|
 | `GET /api/my/jobs?limit=` | 呼び手が見られるジョブ。自分のものと自分のグループのもの（管理者はすべてのジョブ） |
-| `GET /api/destinations` | 呼び手が送れるノード |
+| `GET /api/destinations` | 呼び手が送れるノード。`source` は入口の印。人なら自分のスコープのソース（役割 `topology` ならスコープのすべてのノード）、アプリなら自分を挙げた入口 |
 | `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。アップローダーと同じく `multipart/form-data` のボディも受け取ります。201 とジョブ |
 | `POST /api/locations/<display>/slips` | 同じものをディスプレイに。古い名前です |
 | `GET /api/destinations/<node>/jobs?limit=` | ノードに送られたジョブ（管理者） |
@@ -34,7 +34,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | `GET /api/jobs/<n>/document?payload=` | その `.bdf` 文書（最後に作られたもの、なければ受け取ったもの）、または id で指定したペイロード |
 | `GET /api/jobs/<n>/pages/<p>.png` | 文書のページを描いたもの |
 | `POST /api/jobs/<n>/cancel` | 取り消す |
-| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`。呼び手の新しいジョブとして、送れるノードへもう一度送る。既定はジョブのノード |
+| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`。呼び手の新しいジョブとして、送れるノード（人ならソースか、ジョブ自身のノード）へもう一度送る。既定はジョブのノード |
 
 ## トポロジー {#topology}
 

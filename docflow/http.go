@@ -665,7 +665,10 @@ func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer,
 }
 
 // reprint sends a job's document again, as a new job of the viewer, to
-// a node they may send to: {"to": "<node>"}, or the job's destination.
+// a node they may send to: {"to": "<node>"}, or the job's destination. A
+// person sends to a source (maySendAt), or again to the job's own node
+// of a scope of theirs: where the job came in already, which is no new
+// way in.
 func (h *handler) reprint(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	var in struct {
 		To string `json:"to"`
@@ -678,13 +681,13 @@ func (h *handler) reprint(w http.ResponseWriter, r *http.Request, v *Viewer, j *
 	}
 	dest := firstOr(in.To, j.Dest)
 	if v.Kind == PrincipalUser {
-		scope, owner, _, err := h.m.destScope(r.Context(), dest)
+		n, err := h.m.Node(r.Context(), dest)
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		if !v.CanSendTo(scope, owner) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + dest})
+		if err := v.maySendAt(n); err != nil && (dest != j.Dest || !v.CanSendTo(n.Scope, n.Owner)) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return
 		}
 	} else if err := h.m.appMaySend(r.Context(), v, dest, false); err != nil {
@@ -746,14 +749,19 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if signedIn && v.Kind == PrincipalUser {
-		// a person signed in sends as themselves, to a node they may
-		scope, owner, _, err := h.m.destScope(r.Context(), r.PathValue("name"))
+		// a person signed in sends as themselves, to a source they may
+		// send to (to any node of their scopes, with the role topology)
+		n, err := h.m.Node(r.Context(), r.PathValue("name"))
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		if !v.CanSendTo(scope, owner) || !sameOrigin(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + r.PathValue("name")})
+		if !sameOrigin(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + n.Name})
+			return
+		}
+		if err := v.maySendAt(n); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return
 		}
 		by, ok = v.Principal(), true
