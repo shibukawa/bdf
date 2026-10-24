@@ -147,7 +147,7 @@ Shows the job as a slip on the devices enrolled at the display — the tablets o
 | Setting | |
 |---|---|
 | Fallback printer, after (`fallback`) | the printer, and how long an unopened slip waits before it is printed; 0: only while no device is connected |
-| Keep (`keep`) | how long slips done or canceled stay on the board (14 days) |
+| Keep (`keep`) | how long a slip stays on the board after it came (14 days): until then it opens again, opened or done; then it leaves, done or not |
 | Offline after (`offline_after`) | how long a device may be silent and still count as connected (2 minutes) |
 
 ## Printer {#printer}
