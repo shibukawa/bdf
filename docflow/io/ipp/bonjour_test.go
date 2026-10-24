@@ -19,9 +19,10 @@ import (
 )
 
 // What Bonjour finds is listed for the editor: every IPP printer for a
-// printer, the queues of CUPS servers for a CUPS server (sink) asked with
-// no URL; the CUPS servers of the manager itself are left out, and a
-// serverless deployment has no local network to look on.
+// printer (AirPrint, IPP Everywhere and Mopria printers, told apart), the
+// queues of CUPS servers for a CUPS server (sink) asked with no URL; the
+// CUPS servers of the manager itself are left out, and a serverless
+// deployment has no local network to look on.
 func TestDiscoverBonjour(t *testing.T) {
 	e := flowtest.New(t, nil)
 	ctx := context.Background()
@@ -33,8 +34,10 @@ func TestDiscoverBonjour(t *testing.T) {
 	}
 	dipp.SetBrowse(t, func(context.Context) ([]ipp.Service, error) {
 		return []ipp.Service{
-			{Name: "Canon MF", Host: "canon.local", Port: 631, URL: "ipp://192.0.2.10:631/ipp/print", TXT: map[string]string{"rp": "ipp/print", "ty": "Canon MF644C", "URF": "V1.4", "note": "2F"}},
+			{Name: "Canon MF", Host: "canon.local", Port: 631, URL: "ipp://192.0.2.10:631/ipp/print", TXT: map[string]string{"rp": "ipp/print", "ty": "Canon MF644C", "URF": "V1.4", "note": "2F",
+				"pdl": "application/pdf,image/urf,image/pwg-raster", "Mopria-Certified": "2.0"}},
 			{Name: "Laser @ mac", Host: "mac.local", Port: 631, URL: "ipps://192.0.2.11:631/printers/Laser", Secure: true, TXT: map[string]string{"rp": "printers/Laser", "ty": "HP LaserJet"}},
+			{Name: "Inkjet", Host: "inkjet.local", Port: 631, URL: "ipp://192.0.2.13:631/ipp/print", TXT: map[string]string{"rp": "ipp/print", "pdl": "application/PCLm,image/pwg-raster", "mopria-certified": "1.3"}},
 			{Name: "Office @ here", Host: "here-docflow.local", Port: office.Port, URL: "ipp://192.0.2.12:" + strconv.Itoa(office.Port) + "/printers/office",
 				TXT: map[string]string{"rp": "printers/office", "UUID": strings.TrimPrefix(dipp.PrinterUUID("office"), "urn:uuid:")}},
 		}, nil
@@ -51,13 +54,19 @@ func TestDiscoverBonjour(t *testing.T) {
 		return fs
 	}
 	printers := found(dipp.KindPrinter, docflow.Node{})
-	if len(printers) != 2 {
+	if len(printers) != 3 {
 		t.Fatalf("printers %+v", printers)
 	}
-	if c := printers[0]; c.Name != "Canon MF" || c.URL != "ipp://192.0.2.10:631/ipp/print" || c.Model != "Canon MF644C" || c.Note != "2F" || !c.AirPrint || c.Queue || c.Secure {
+	// what each speaks: AirPrint (URF), IPP Everywhere (PWG raster),
+	// Mopria (certified, in a key of any case)
+	if c := printers[0]; c.Name != "Canon MF" || c.URL != "ipp://192.0.2.10:631/ipp/print" || c.Model != "Canon MF644C" || c.Note != "2F" || !c.AirPrint || !c.Everywhere ||
+		!c.Mopria || c.Queue || c.Secure {
 		t.Errorf("canon %+v", c)
 	}
-	if l := printers[1]; l.Name != "Laser @ mac" || !l.Queue || !l.Secure || l.AirPrint {
+	if i := printers[2]; i.Name != "Inkjet" || i.AirPrint || !i.Everywhere || !i.Mopria {
+		t.Errorf("inkjet %+v", i)
+	}
+	if l := printers[1]; l.Name != "Laser @ mac" || !l.Queue || !l.Secure || l.AirPrint || l.Everywhere || l.Mopria {
 		t.Errorf("laser %+v", l)
 	}
 	if qs := found(dipp.KindCupsOut, docflow.Node{}); len(qs) != 1 || qs[0].Name != "Laser @ mac" || qs[0].URL != "ipps://192.0.2.11:631/printers/Laser" {

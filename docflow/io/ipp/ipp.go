@@ -13,11 +13,14 @@
 // own server (an ingress: on a serverless deployment, with no ports, the
 // only one). A sender (a WMS, a business system, an office PC) prints to
 // it as to any printer, and the job follows the node's edges from there.
-// Only the operations of one request are taken (Print-Job, not
-// Create-Job and Send-Document), so that a request is all there is to a
-// job: no instance waits for a document. /ipp/print itself answers
-// CUPS-Get-Printers with the CUPS server nodes, as a CUPS server lists
-// its destinations.
+// The manager's own server takes the operations of one request alone
+// (Print-Job, not Create-Job and Send-Document), so that a request is all
+// there is to a job: no instance waits for a document. A node's own port,
+// where one process listens, takes Create-Job and Send-Document too
+// (created.go), as IPP Everywhere asks: there it is an AirPrint, IPP
+// Everywhere and Mopria printer that Macs, iPhones, Android and Windows
+// add without a driver. /ipp/print itself answers CUPS-Get-Printers with
+// the CUPS server nodes, as a CUPS server lists its destinations.
 package ipp
 
 import (

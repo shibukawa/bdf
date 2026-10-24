@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,8 +17,8 @@ import (
 )
 
 // Bonjour: the IPP printers DNS-SD finds on the local links of the
-// process, AirPrint printers and the queues computers and CUPS servers
-// share among them. The editor picks a printer's URL, or a CUPS server
+// process, AirPrint, IPP Everywhere and Mopria printers and the queues
+// computers and CUPS servers share among them. The editor picks a printer's URL, or a CUPS server
 // (sink)'s queue, from them (Kind.Discover), and a node picked so keeps
 // the instance name (Node.Bonjour): when its address stops answering (a
 // printer's address from DHCP changes), it is looked for again by the
@@ -49,9 +50,15 @@ type Found struct {
 	// /classes/<class>): a printer a computer or a CUPS server shares.
 	Queue bool `json:"queue,omitempty"`
 	// AirPrint tells a printer that takes Apple raster (URF), as AirPrint
-	// printers do; Secure, one found as _ipps._tcp (TLS).
-	AirPrint bool `json:"airprint,omitempty"`
-	Secure   bool `json:"secure,omitempty"`
+	// printers do; Everywhere one that takes PWG raster, as IPP
+	// Everywhere printers do; Mopria one that says it is certified by
+	// Mopria (mopria-certified). The printer node prints to any of them
+	// alike, in the best format it takes (PDF first). Secure tells one
+	// found as _ipps._tcp (TLS).
+	AirPrint   bool `json:"airprint,omitempty"`
+	Everywhere bool `json:"everywhere,omitempty"`
+	Mopria     bool `json:"mopria,omitempty"`
+	Secure     bool `json:"secure,omitempty"`
 }
 
 // discoverPrinters lists the IPP printers Bonjour finds, for a printer.
@@ -84,13 +91,29 @@ func bonjour(ctx context.Context, m *docflow.Manager, queues bool) ([]Found, err
 			continue
 		}
 		_, qerr := queueOf(s.URL)
-		f := Found{Name: s.Name, URL: s.URL, Host: s.Host, Model: s.TXT["ty"], Note: s.TXT["note"], Queue: qerr == nil, AirPrint: s.TXT["URF"] != "", Secure: s.Secure}
+		f := Found{Name: s.Name, URL: s.URL, Host: s.Host, Model: txt(s, "ty"), Note: txt(s, "note"), Queue: qerr == nil, AirPrint: txt(s, "URF") != "",
+			Everywhere: slices.ContainsFunc(s.Formats(), func(f string) bool { return strings.EqualFold(strings.TrimSpace(f), "image/pwg-raster") }),
+			Mopria:     txt(s, "mopria-certified") != "", Secure: s.Secure}
 		if queues && !f.Queue {
 			continue
 		}
 		out = append(out, f)
 	}
 	return out, nil
+}
+
+// txt is the value of a key of a service's TXT record, whose keys are
+// told apart without case (RFC 6763 §6.4).
+func txt(s ipp.Service, key string) string {
+	if v, ok := s.TXT[key]; ok {
+		return v
+	}
+	for k, v := range s.TXT {
+		if strings.EqualFold(k, key) {
+			return v
+		}
+	}
+	return ""
 }
 
 func ownKey(uuid string, port int) string { return strings.ToLower(uuid) + "@" + strconv.Itoa(port) }

@@ -461,6 +461,11 @@ func Final(err error) error {
 // Options are the options the manager runs with, their defaults filled.
 func (m *Manager) Options() Options { return m.o }
 
+// StoreKey is the same for every manager of a store (New): what a kind
+// keeps in the process for the records of a store (the jobs IPP's
+// Create-Job made, which wait for their documents) is kept by it.
+func (m *Manager) StoreKey() any { return m.st }
+
 // Now is the manager's clock.
 func (m *Manager) Now() time.Time { return m.now() }
 

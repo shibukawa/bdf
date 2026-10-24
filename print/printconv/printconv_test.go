@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 
 	_ "github.com/shibukawa/bdf/converter/markdown"
+	_ "github.com/shibukawa/bdf/converter/pdf"
 	_ "github.com/shibukawa/bdf/converter/pptx"
+	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -71,5 +76,60 @@ func TestConverter(t *testing.T) {
 	cancel()
 	if _, _, err := c.Convert(cctx, md, md.Size(), f, "notes.md", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled: %v", err)
+	}
+}
+
+// PCLm, the raster of Mopria, is a PDF of strips of image: the PDF
+// converter reads it, in each of its compressions, as pages of the size
+// the strips make.
+func TestPCLm(t *testing.T) {
+	c := Converter{NoSystemFonts: true}
+	for _, comp := range []string{"flate", "jpeg", "rle"} {
+		t.Run(comp, func(t *testing.T) {
+			var b bytes.Buffer
+			w, err := raster.NewPCLmWriter(&b, raster.PCLmOptions{Compression: comp})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// two A6 pages at 150 dpi, a grey band across each
+			for range 2 {
+				pg := raster.Page{Width: 620, Height: 874, XDPI: 150, YDPI: 150, Type: raster.SRGB8, PageWidth: 298, PageHeight: 420}
+				if err := w.StartPage(pg); err != nil {
+					t.Fatal(err)
+				}
+				img := image.NewRGBA(image.Rect(0, 0, pg.Width, pg.Height))
+				for y := range pg.Height {
+					for x := range pg.Width {
+						v := uint8(255)
+						if y > 400 && y < 480 {
+							v = 128
+						}
+						img.Set(x, y, color.RGBA{v, v, v, 255})
+					}
+				}
+				if err := w.WriteRows(img); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+			r := bytes.NewReader(b.Bytes())
+			f, ok := c.Detect(r, r.Size(), "job")
+			if !ok || f != "pdf" {
+				t.Fatalf("detected %q %v", f, ok)
+			}
+			doc, _, err := c.Convert(context.Background(), r, r.Size(), f, "job", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := doc.Views[0]
+			if len(v.Pages) != 2 {
+				t.Fatalf("%d pages", len(v.Pages))
+			}
+			if w, h := float64(v.Pages[0].W), float64(v.Pages[0].H); math.Abs(w-298) > 1 || math.Abs(h-420) > 1 {
+				t.Errorf("page %vx%v, want 298x420", w, h)
+			}
+		})
 	}
 }
