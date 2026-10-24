@@ -1,5 +1,8 @@
 # The checks of ipp-everywhere.test (CUPS ipptool) that do not need its
 # sample rasters: IPP/1.1 and IPP/2.0, and the attributes PWG 5100.14 requires.
+# With -d NO_PAGE_RANGES=1, page-ranges and overrides are not asked: the
+# Docflow's CUPS server nodes send a document on whole, and their clients
+# pick the pages they send.
 INCLUDE <ipp-2.0.test>
 
 # Test required printer description attribute support.
@@ -88,10 +91,10 @@ INCLUDE <ipp-2.0.test>
 
 	EXPECT multiple-operation-time-out-action OF-TYPE keyword IN-GROUP printer-attributes-tag COUNT 1 WITH-VALUE "/^(abort-job|hold-job|process-job)$/"
 
-	EXPECT overrides-supported OF-TYPE keyword IN-GROUP printer-attributes-tag WITH-VALUE "document-number"
-	EXPECT overrides-supported OF-TYPE keyword IN-GROUP printer-attributes-tag WITH-VALUE "pages"
+	EXPECT overrides-supported OF-TYPE keyword IN-GROUP printer-attributes-tag WITH-VALUE "document-number" IF-NOT-DEFINED NO_PAGE_RANGES
+	EXPECT overrides-supported OF-TYPE keyword IN-GROUP printer-attributes-tag WITH-VALUE "pages" IF-NOT-DEFINED NO_PAGE_RANGES
 
-	EXPECT page-ranges-supported OF-TYPE boolean IN-GROUP printer-attributes-tag COUNT 1 WITH-VALUE true IF-DEFINED PDF_OR_OPENXPS
+	EXPECT page-ranges-supported OF-TYPE boolean IN-GROUP printer-attributes-tag COUNT 1 WITH-VALUE true IF-DEFINED PDF_OR_OPENXPS IF-NOT-DEFINED NO_PAGE_RANGES
 
 	EXPECT print-color-mode-default OF-TYPE keyword IN-GROUP printer-attributes-tag COUNT 1 WITH-VALUE "/^(auto|auto-monochrome|bi-level|color|highlight|monochrome|process-bi-level|process-monochrome)$/"
 	EXPECT print-color-mode-supported OF-TYPE keyword IN-GROUP printer-attributes-tag WITH-ALL-VALUES "/^(auto|auto-monochrome|bi-level|color|highlight|monochrome|process-bi-level|process-monochrome)$/"

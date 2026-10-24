@@ -2,28 +2,35 @@ package ipp
 
 import (
 	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shibukawa/bdf/docflow"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
-// A CUPS server node is a printer computers and phones add as AirPrint
-// and IPP Everywhere printers do: its attributes tell what those clients
-// ask before they print (the paper, the rasters, PDF), so that a Mac
-// makes an AirPrint queue of it and sends PDF, not PostScript (which
-// bdf does not read), and it is advertised with DNS-SD on the local
+// A CUPS server node is a printer computers and phones add as AirPrint,
+// IPP Everywhere and Mopria printers are added: its attributes tell what
+// those clients ask before they print (the paper, the rasters, PDF), so
+// that a Mac makes an AirPrint queue of it and sends PDF, not PostScript
+// (which bdf does not read), Android's print services (Mopria) and
+// Windows's IPP class driver take it as theirs, and CUPS makes an IPP
+// Everywhere queue of it; it is advertised with DNS-SD on the local
 // links unless the node says not to (Node.DNSSD false; cmd/docflow
-// announces it).
+// announces it). On its own port it is an IPP Everywhere printer, with
+// Create-Job (created.go); not page-ranges, as clients pick the pages
+// they send (a document goes on whole).
 // What it receives is made .bdf and sent on, so what it can do is not a
 // printer's: any of the paper below, in colour, with no margins; one
 // side and one copy, as the document goes on as it is.
 
 // The rasters clients draw for it: PWG raster's resolutions and types,
-// and Apple raster's (urf-supported: version 1.4, 8-bit grey and sRGB,
-// the resolutions, one copy, one input slot, plain paper, normal
-// quality).
+// Apple raster's (urf-supported: version 1.4, 8-bit grey and sRGB, the
+// resolutions, one copy, one input slot, plain paper, normal quality),
+// and PCLm's (its strips of 16 rows, flate preferred: the PDF converter
+// reads any).
 var (
 	rasterResolutions = []int{150, 300, 600}
 	rasterTypes       = []string{"black_1", "sgray_8", "srgb_8"}
@@ -45,20 +52,32 @@ var (
 const paperMax = "tabloid-A3"
 
 // txtPDL is the pdl key of the TXT record: PDF first, so that clients
-// that take the first they can send vectors.
-const txtPDL = "application/pdf,image/urf,image/pwg-raster,image/jpeg,image/png"
+// that take the first they can send vectors, then the rasters of
+// AirPrint, IPP Everywhere and Mopria.
+const txtPDL = "application/pdf,image/urf,image/pwg-raster,application/PCLm,image/jpeg,image/png"
 
 // makeModel is the CUPS server nodes' printer-make-and-model: what a
 // client names the driver it makes ("BDF Docflow-AirPrint" on a Mac).
 const makeModel = "BDF Docflow"
 
-// airPrintAttrs are a CUPS server node's attributes as an AirPrint and
-// IPP Everywhere printer: q is the request (its destination, the host
-// it came to), queued the jobs not ended, auth and security the
-// keywords of how it is reached.
+// mopriaVersion is the version of Mopria the nodes answer as
+// (mopria-certified, and the TXT key): Android's print services and
+// Windows's IPP class driver take a printer that says it.
+const mopriaVersion = "2.0"
+
+// started is when the process started: the printers' configuration and
+// state changed then, as far as a client is told.
+var started = time.Now()
+
+// airPrintAttrs are a CUPS server node's attributes as an AirPrint, IPP
+// Everywhere and Mopria printer: q is the request (its destination, the
+// host it came to), queued the jobs not ended, auth and security the
+// keywords of how it is reached. On the manager's own server, which
+// takes no Create-Job, it does not say IPP Everywhere
+// (ipp-features-supported) and has no icons.
 func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string) []ipp.Attribute {
-	ops := make([]ipp.Value, len(ippOperations))
-	for i, op := range ippOperations {
+	ops := make([]ipp.Value, len(q.operations()))
+	for i, op := range q.operations() {
 		ops[i] = ipp.Enum(int(op))
 	}
 	var mediaDB, mediaReady, mediaSizes []ipp.Value
@@ -83,7 +102,21 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		resolutions[i] = ipp.NewResolution(dpi, dpi, ipp.UnitsDPI)
 	}
 	now := s.m.Now()
-	return []ipp.Attribute{
+	features := []ipp.Value{ipp.Keyword("none")}
+	var port []ipp.Attribute
+	if q.server != "" {
+		features = []ipp.Value{ipp.Keyword("ipp-everywhere")}
+		var icons []ipp.Value
+		for _, n := range ipp.IconSizes {
+			icons = append(icons, ipp.URI(q.page()+"icons/"+strconv.Itoa(n)+".png"))
+		}
+		port = []ipp.Attribute{
+			ipp.Attr("printer-icons", icons...),
+			ipp.Attr("multiple-operation-time-out", ipp.Integer(int(createdTimeout/time.Second))),
+			ipp.Attr("multiple-operation-time-out-action", ipp.Keyword("abort-job")),
+		}
+	}
+	return append([]ipp.Attribute{
 		ipp.Attr("printer-uri-supported", ipp.URI(q.printerURI())),
 		ipp.Attr("uri-security-supported", ipp.Keyword(security)),
 		ipp.Attr("uri-authentication-supported", ipp.Keyword(auth)),
@@ -92,7 +125,7 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		ipp.Attr("printer-location", ipp.Text(q.title)),
 		ipp.Attr("printer-make-and-model", ipp.Text(makeModel)),
 		ipp.Attr("printer-more-info", ipp.URI(q.moreInfo())),
-		ipp.Attr("printer-device-id", ipp.Text("MFG:BDF;MDL:Docflow;CMD:PDF,URF,PWG,JPEG,PNG;")),
+		ipp.Attr("printer-device-id", ipp.Text("MFG:BDF;MDL:Docflow;CMD:PDF,URF,PWG,PCLM,JPEG,PNG;")),
 		ipp.Attr("printer-uuid", ipp.URI(printerUUID(q.dest))),
 		ipp.Attr("printer-kind", ipp.Keyword("document")),
 		ipp.Attr("printer-type", ipp.Integer(0)),
@@ -102,10 +135,23 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		ipp.Attr("queued-job-count", ipp.Integer(queued)),
 		ipp.Attr("printer-up-time", ipp.Integer(int(now.Unix()&0x7fffffff))),
 		ipp.Attr("printer-current-time", ipp.DateTime(now)),
+		ipp.Attr("printer-state-change-time", ipp.Integer(int(started.Unix()&0x7fffffff))),
+		ipp.Attr("printer-state-change-date-time", ipp.DateTime(started)),
+		ipp.Attr("printer-config-change-time", ipp.Integer(int(started.Unix()&0x7fffffff))),
+		ipp.Attr("printer-config-change-date-time", ipp.DateTime(started)),
+		ipp.Attr("printer-organization", ipp.Text("")),
+		ipp.Attr("printer-organizational-unit", ipp.Text("")),
+		ipp.Attr("printer-geo-location", ipp.OutOfBand(ipp.TagUnknown)),
+		// no supplies: what is printed goes on as documents
+		ipp.Attr("printer-supply", ipp.OctetString([]byte("index=1;class=unknown;type=other;unit=percent;maxcapacity=100;level=-2;colorantname=unknown;"))),
+		ipp.Attr("printer-supply-description", ipp.Text("supplies of the printers the node sends to")),
+		ipp.Attr("printer-supply-info-uri", ipp.URI(q.moreInfo())),
+		ipp.Attr("mopria-certified", ipp.Text(mopriaVersion)),
 		ipp.Attr("printer-firmware-name", ipp.Name("bdf")),
 		ipp.Attr("printer-firmware-string-version", ipp.Text(makeModel)),
 		ipp.Attr("printer-firmware-version", ipp.OctetString([]byte{1})),
 		ipp.Attr("ipp-versions-supported", ipp.Keyword("1.1"), ipp.Keyword("2.0")),
+		ipp.Attr("ipp-features-supported", features...),
 		ipp.Attr("operations-supported", ops...),
 		ipp.Attr("charset-configured", ipp.Charset("utf-8")),
 		ipp.Attr("charset-supported", ipp.Charset("utf-8")),
@@ -119,12 +165,19 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		ipp.Attr("pdl-override-supported", ipp.Keyword("not-attempted")),
 		ipp.Attr("multiple-document-jobs-supported", ipp.Boolean(false)),
 		ipp.Attr("job-ids-supported", ipp.Boolean(true)),
+		ipp.Attr("preferred-attributes-supported", ipp.Boolean(false)),
+		ipp.Attr("printer-get-attributes-supported", ipp.Keyword("document-format")),
+		ipp.Attr("identify-actions-supported", ipp.Keyword("display")),
+		ipp.Attr("identify-actions-default", ipp.Keyword("display")),
 		ipp.Attr("which-jobs-supported", ipp.Keywords([]string{"completed", "not-completed", "all"})...),
 		ipp.Attr("job-creation-attributes-supported", ipp.Keywords([]string{"copies", "job-account-id", "job-accounting-user-id", "media", "media-col",
 			"orientation-requested", "print-color-mode", "print-quality", "printer-resolution", "sides"})...),
 		ipp.Attr("job-k-octets-supported", ipp.NewRange(0, int(min(s.m.Options().MaxDocument/1024, math.MaxInt32)))),
 		ipp.Attr("job-account-id-supported", ipp.Boolean(true)),
+		ipp.Attr("job-account-id-default", ipp.OutOfBand(ipp.TagNoValue)),
 		ipp.Attr("job-accounting-user-id-supported", ipp.Boolean(true)),
+		ipp.Attr("job-accounting-user-id-default", ipp.OutOfBand(ipp.TagNoValue)),
+		ipp.Attr("page-ranges-supported", ipp.Boolean(false)),
 		ipp.Attr("copies-default", ipp.Integer(1)),
 		ipp.Attr("copies-supported", ipp.NewRange(1, 1)),
 		ipp.Attr("finishings-default", ipp.Enum(3)),
@@ -142,6 +195,10 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		ipp.Attr("printer-resolution-supported", resolutions...),
 		ipp.Attr("print-color-mode-default", ipp.Keyword("auto")),
 		ipp.Attr("print-color-mode-supported", ipp.Keyword("auto"), ipp.Keyword("color"), ipp.Keyword("monochrome")),
+		ipp.Attr("print-content-optimize-default", ipp.Keyword("auto")),
+		ipp.Attr("print-content-optimize-supported", ipp.Keyword("auto")),
+		ipp.Attr("print-rendering-intent-default", ipp.Keyword("auto")),
+		ipp.Attr("print-rendering-intent-supported", ipp.Keyword("auto")),
 		ipp.Attr("color-supported", ipp.Boolean(true)),
 		ipp.Attr("pages-per-minute", ipp.Integer(60)),
 		ipp.Attr("pages-per-minute-color", ipp.Integer(60)),
@@ -165,30 +222,42 @@ func (s *server) airPrintAttrs(q *ippRequest, queued int, auth, security string)
 		ipp.Attr("pwg-raster-document-type-supported", ipp.Keywords(rasterTypes)...),
 		ipp.Attr("pwg-raster-document-sheet-back", ipp.Keyword("normal")),
 		ipp.Attr("urf-supported", ipp.Keywords(urfSupported)...),
-	}
+		ipp.Attr("pclm-source-resolution-supported", resolutions...),
+		ipp.Attr("pclm-strip-height-preferred", ipp.Integer(16)),
+		ipp.Attr("pclm-strip-height-supported", ipp.Integer(16)),
+		ipp.Attr("pclm-compression-method-preferred", ipp.Keyword("flate")),
+		ipp.Attr("pclm-raster-back-side", ipp.Keyword("normal")),
+	}, port...)
 }
 
 // moreInfo is printer-more-info, the page a client opens for the
 // printer: on a CUPS server node's port, what the port tells of the node
 // (GET /); on the manager's own server, the topology.
 func (q *ippRequest) moreInfo() string {
+	if q.server != "" {
+		return q.page()
+	}
+	return q.page() + "topology"
+}
+
+// page is the root of the server the request came to, over HTTP (https
+// for ipps).
+func (q *ippRequest) page() string {
 	scheme := "http"
 	if q.scheme() == "ipps" {
 		scheme = "https"
 	}
-	if q.server != "" {
-		return scheme + "://" + q.r.Host + "/"
-	}
-	return scheme + "://" + q.r.Host + "/topology"
+	return scheme + "://" + q.r.Host + "/"
 }
 
 // Advertisements are the DNS-SD services of the CUPS server nodes that
 // are advertised (Node.Advertised) on a port of their own, of nodes (those
 // whose port the process listens on): _ipps._tcp for one with a
 // certificate, else _ipp._tcp, with the subtypes _print (IPP
-// Everywhere) and _universal (AirPrint), as "<title> @ <machine>"
-// (machine is the computer's name, a label). The services are on the
-// host the caller advertises them on (ipp.Advertise).
+// Everywhere) and _universal (AirPrint) and the TXT keys of Mopria, as
+// "<title> @ <machine>" (machine is the computer's name, a label). The
+// services are on the host the caller advertises them on
+// (ipp.Advertise).
 func Advertisements(m *docflow.Manager, nodes []docflow.Node, machine string) []ipp.Advertisement {
 	air := "none"
 	if len(m.Options().SubmitTokens) > 0 {
@@ -222,6 +291,9 @@ func Advertisements(m *docflow.Manager, nodes []docflow.Node, machine string) []
 			"kind=document",
 			"PaperMax=" + paperMax,
 			"air=" + air,
+			"mopria-certified=" + mopriaVersion,
+			// Android's print service lists it (F opts out)
+			"print_wfds=T",
 		}
 		typ := "_ipp._tcp"
 		if n.TLSCert != "" {

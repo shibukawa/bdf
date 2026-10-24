@@ -42,6 +42,10 @@ type Input struct {
 	ContentType string
 	// Meta is the metadata the sender gave (meta.go).
 	Meta map[string]any
+	// Number is the job's number when one was taken before the document
+	// came (ReserveJobNumber: IPP's Create-Job tells the job's id before
+	// Send-Document brings the document); 0 takes the next.
+	Number int32
 }
 
 // ErrFormat is the error of a document neither .bdf nor of a format the
@@ -163,9 +167,12 @@ func (m *Manager) receive(ctx context.Context, in Input, accept, output string, 
 // submitPayload keeps what was received as a job and routes it from a
 // destination.
 func (m *Manager) submitPayload(ctx context.Context, dest string, entry *Node, rc *received, in Input, claimed map[string]any) (*Job, error) {
-	number, err := m.nextJob(ctx)
-	if err != nil {
-		return nil, err
+	number := in.Number
+	if number <= 0 {
+		var err error
+		if number, err = m.nextJob(ctx); err != nil {
+			return nil, err
+		}
 	}
 	now := m.now()
 	by := in.By

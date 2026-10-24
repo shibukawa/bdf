@@ -302,6 +302,10 @@ func (m *Manager) nextJob(ctx context.Context) (int32, error) {
 	return job, err
 }
 
+// ReserveJobNumber takes the next job number for a job whose document
+// comes later (Input.Number). A number taken and not used is skipped.
+func (m *Manager) ReserveJobNumber(ctx context.Context) (int32, error) { return m.nextJob(ctx) }
+
 // Slip returns a slip.
 func (m *Manager) Slip(ctx context.Context, id string) (*Slip, error) {
 	rec, err := m.st.db.Get[slipRecord](ctx, id)

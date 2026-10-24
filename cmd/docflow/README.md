@@ -109,7 +109,7 @@ the nodes reached from outside are under their kind and their name,
 `POST /api/upload/<name>`, an inbox is worked at `/api/inbox/<name>`,
 a downloader is read at `/api/download/<name>`, an S3 trigger takes an
 event's reference at `POST /api/s3-trigger/<name>`. No node but a CUPS
-server (IPP, AirPrint) has a port of its own.
+server (IPP: AirPrint, IPP Everywhere, Mopria) has a port of its own.
 
 **Apps** are the applications that send with credentials of their own (a
 business system, a WMS): an administrator registers one on `/admin/apps`

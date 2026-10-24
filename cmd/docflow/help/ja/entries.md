@@ -47,9 +47,11 @@ curl -H "Authorization: Bearer bdfk_…" \
 
 ## CUPS サーバーノード {#cups}
 
-CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷するコンピュータや業務システム向けです。プロセス自身のポートで動く CUPS サーバーで、プリンタはノード自身の 1 台です。コンピュータは、ほかの CUPS プリンタと同じように `ipp://<host>:<port>/printers/<name>`（ノードに証明書があれば `ipps://`）でプリンタを追加し、そこに印刷したものはノードの `to` へ進みます。プリンタならノードは中継になり、シンクなら印刷されたものが見え、フィルタなら条件に合うものだけが残ります。`lpstat -h <host>:<port> -p` で一覧できます。新しい CUPS サーバーには、6310 から、どのノードも使っていない最初のポートが付きます。逆に、このシステムから CUPS サーバーのキューへ印刷するには、エッジの先に [CUPS サーバー（シンク）](nodes.md#cups-out)を置きます。ノードの使い方タブに、URL、macOS・Windows・CUPS での追加のしかた、コマンドが表示されます。
+CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷するコンピュータや業務システム向けです。プロセス自身のポートで動く CUPS サーバーで、プリンタはノード自身の 1 台です。コンピュータは、ほかの CUPS プリンタと同じように `ipp://<host>:<port>/printers/<name>`（ノードに証明書があれば `ipps://`）でプリンタを追加し、そこに印刷したものはノードの `to` へ進みます。プリンタならノードは中継になり、シンクなら印刷されたものが見え、フィルタなら条件に合うものだけが残ります。`lpstat -h <host>:<port> -p` で一覧できます。新しい CUPS サーバーには、6310 から、どのノードも使っていない最初のポートが付きます。逆に、このシステムから CUPS サーバーのキューへ印刷するには、エッジの先に [CUPS サーバー（シンク）](nodes.md#cups-out)を置きます。ノードの使い方タブに、URL、macOS・iOS・Android・Windows・CUPS での追加のしかた、コマンドが表示されます。
 
-プリンタは AirPrint や IPP Everywhere のプリンタと同じように答えます（PDF 優先、Apple と PWG のラスター、A3 からはがきまでの用紙）。そのため Mac は AirPrint のキューを作り、PDF を送ります。アドレスで追加するときは、ドライバに AirPrint を選びます。一般的な PostScript プリンタは PostScript を送りますが、これは受け付けず、Mac はジョブを再送し続けます（拒否のたびに `ipp: print-job refused` がログに出ます）。Bonjour（`dnssd`。`false` にしない限り入っています）で告知するので、ポートが開いている間、ローカルネットワークの Mac、iPhone、iPad が「<タイトル> @ <コンピュータ>」として見つけます。ホスト名はプロセス自身のもの（`<コンピュータ>-docflow.local`）です。
+プリンタは AirPrint、IPP Everywhere、Mopria のプリンタと同じように答えます（PDF 優先、それぞれのラスター（Apple、PWG、PCLm）、A3 からはがきまでの用紙）。そのため Mac は AirPrint のキューを作って PDF を送り、Android の印刷サービス（デフォルト印刷サービス、Mopria Print Service）は Mopria のプリンタとして、Windows（IPP クラスドライバ）と CUPS は IPP Everywhere のプリンタとして扱います。Mac でアドレスから追加するときは、ドライバに AirPrint を選びます。一般的な PostScript プリンタは PostScript を送りますが、これは受け付けず、Mac はジョブを再送し続けます（拒否のたびに `ipp: print-job refused` がログに出ます）。Bonjour（`dnssd`。`false` にしない限り入っています）で告知するので、ポートが開いている間、ローカルネットワークの Mac、iPhone、iPad、Android のスマートフォンとタブレット、Windows と Linux のコンピュータが「<タイトル> @ <コンピュータ>」として見つけます。ホスト名はプロセス自身のもの（`<コンピュータ>-docflow.local`）です。
+
+ポートでは、IPP Everywhere が求め、これらのクライアントが送るとおり、ジョブが 2 つのリクエストで来ることもあります。ジョブの番号を返す Create-Job と、文書を運ぶ Send-Document です（文書はジョブに 1 つ。5 分以内に文書が来ないジョブは中止します）。マネージャー自身のサーバー（`/ipp/print/<name>`）は、どのインスタンスも文書を待たずに済むよう、1 つのリクエストで来るジョブ（Print-Job）だけを受けます。文書はそのまま先へ進みます。印刷するページはクライアントが選んで送り、`page-ranges` は受けません。
 
 ## アプリ {#apps}
 

@@ -659,10 +659,11 @@ function composeURL(form) {
 
 // connectFields are how a printer or a CUPS server (sink) is reached,
 // put before the fields of its address (manual): the address typed, or
-// AirPrint, picked from what Bonjour finds on this server's local
-// network (POST /api/kinds/<kind>/discover with no URL: a printer's,
-// every IPP printer; a CUPS server (sink)'s, the queues computers and
-// CUPS servers share), whose instance name the node keeps (bonjour) to
+// picked from what Bonjour finds on this server's local network (POST
+// /api/kinds/<kind>/discover with no URL: a printer's, every IPP printer,
+// AirPrint, IPP Everywhere and Mopria printers alike, each named with
+// what it speaks; a CUPS server (sink)'s, the queues computers and CUPS
+// servers share), whose instance name the node keeps (bonjour) to
 // find it again where its address changes. The fields of the way not
 // chosen are hidden and not required. changed is told the URL picked
 // (null: Manual chosen), to fill the address's fields with, so that
@@ -671,7 +672,7 @@ function composeURL(form) {
 function connectFields(form, n, manual, changed) {
   if (me && me.ports === false) return;
   const queues = n.kind === "cups-out";
-  const via = selectInput("f-via", [["manual", _("Manual: the address typed")], ["bonjour", _("AirPrint: found with Bonjour")]], n.bonjour ? "bonjour" : "manual");
+  const via = selectInput("f-via", [["manual", _("Manual: the address typed")], ["bonjour", _("Bonjour: AirPrint, IPP Everywhere, Mopria")]], n.bonjour ? "bonjour" : "manual");
   form.append(field(_("Connect"), via));
   const pick = el("select", undefined, { id: "f-bonjour", className: "select select-sm w-full", required: true });
   pick.dataset.need = queues ? _("Required: choose a queue found, or search again.") : _("Required: choose a printer found, or search again.");
@@ -683,7 +684,7 @@ function connectFields(form, n, manual, changed) {
   box.append(pick, row);
   const air = field(queues ? _("Shared queue") : _("Printer"), box, queues
     ? _("The queues that Macs and CUPS servers on this server's local network share, as Bonjour finds them. The node keeps the name: when the address stops answering, it is looked for again.")
-    : _("The printers on this server's local network, as Bonjour finds them (AirPrint and IPP Everywhere printers, and the queues computers share). The node keeps the name: when the address stops answering, it is looked for again."));
+    : _("The printers on this server's local network, as Bonjour finds them (AirPrint, IPP Everywhere and Mopria printers, each named with what it speaks, and the queues computers share). The node prints to any of them the same way, PDF first. It keeps the name: when the address stops answering, it is looked for again."));
   form.append(air);
   const opt = (name, label, url) => {
     const o = el("option", label, { value: name });
@@ -696,7 +697,7 @@ function connectFields(form, n, manual, changed) {
     const chosen = pick.value || n.bonjour || "";
     const url = (was && was.value === chosen && was.dataset.url) || (chosen === n.bonjour ? n.url : "");
     pick.replaceChildren(opt("", _("— choose —"), ""));
-    for (const x of list || []) pick.append(opt(x.name, [x.name, x.model, x.note, !queues && x.queue && _("shared queue")].filter(Boolean).join(" · "), x.url));
+    for (const x of list || []) pick.append(opt(x.name, [x.name, x.model, x.note, speaks(x), !queues && x.queue && _("shared queue")].filter(Boolean).join(" · "), x.url));
     if (chosen && ![...pick.options].some((o) => o.value === chosen)) pick.append(opt(chosen, list ? _("{name} (not found now)", { name: chosen }) : chosen, url));
     pick.value = chosen;
   };
@@ -737,8 +738,14 @@ function connectFields(form, n, manual, changed) {
   sync();
 }
 
+// speaks names what a printer Bonjour found speaks, of AirPrint, IPP
+// Everywhere and Mopria ("" for none of them).
+function speaks(x) {
+  return [x.airprint && "AirPrint", x.everywhere && "IPP Everywhere", x.mopria && "Mopria"].filter(Boolean).join(", ");
+}
+
 // pickedURL is the URL of what was picked from Bonjour when the form
-// says AirPrint ("" when nothing is), null when it says Manual.
+// says so ("" when nothing is), null when it says Manual.
 function pickedURL(form) {
   const via = form.querySelector("#f-via");
   if (!via || via.value !== "bonjour") return null;
@@ -1370,7 +1377,7 @@ function settingsForm(n) {
         // advertised unless it says not to (dnssd false), where nodes have ports
         const none = !!(me && me.ports === false);
         const bonjour = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
-        bonjour.append(el("input", undefined, { id: "f-dnssd", type: "checkbox", className: "checkbox checkbox-sm", checked: !none && n.dnssd !== false, disabled: none }), _("Bonjour: advertised on the local network, where Macs, iPhones and iPads find it as an AirPrint printer"));
+        bonjour.append(el("input", undefined, { id: "f-dnssd", type: "checkbox", className: "checkbox checkbox-sm", checked: !none && n.dnssd !== false, disabled: none }), _("Bonjour: advertised on the local network, where Macs, iPhones and iPads find it as an AirPrint printer, Android phones and tablets as a Mopria printer, and Windows and Linux computers as an IPP Everywhere printer"));
         form.append(bonjour);
       }
       form.append(appsField(n, _("Apps print here with their id and secret as IPP Basic, within their scopes; computers print as the submit tokens allow.")));
@@ -1841,7 +1848,12 @@ function printerSetup(n) {
   sec.append(pre(url));
   const steps = el("ul", undefined, { className: "flex list-disc flex-col gap-1 pl-5 text-sm" });
   if (own && n.dnssd !== false) {
-    steps.append(el("li", _("Macs, iPhones and iPads on the local network find it with Bonjour as {name} @ <this computer>: macOS: System Settings → Printers & Scanners → Add Printer → Default, Use: AirPrint; iPhone and iPad: Print → Printer.", { name: n.title || n.name })));
+    const name = n.title || n.name;
+    steps.append(
+      el("li", _("Macs, iPhones and iPads on the local network find it with Bonjour as {name} @ <this computer>: macOS: System Settings → Printers & Scanners → Add Printer → Default, Use: AirPrint; iPhone and iPad: Print → Printer.", { name })),
+      el("li", _("Android phones and tablets on the local network find it as {name} @ <this computer>, a Mopria printer: Print → Select a printer → All printers (the Default Print Service, or the Mopria Print Service).", { name })),
+      el("li", _("Windows computers on the local network find it as {name} @ <this computer>, an IPP Everywhere printer: Settings → Bluetooth & devices → Printers & scanners → Add device (the Microsoft IPP Class Driver); when it is not listed, add it by name as below.", { name })),
+    );
   }
   steps.append(
     el("li", _("macOS: System Settings → Printers & Scanners → Add Printer → IP: address {host}, protocol IPP (Internet Printing Protocol), queue {queue}, Use: AirPrint. Not Generic PostScript Printer: its PostScript is not taken.", { host, queue })),

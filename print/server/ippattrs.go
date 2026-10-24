@@ -741,7 +741,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		scheme = "https"
 	}
 	icons := []ipp.Value{}
-	for _, n := range iconSizes {
+	for _, n := range ipp.IconSizes {
 		icons = append(icons, ipp.URI(fmt.Sprintf("%s://%s/icons/%d.png", scheme, host, n)))
 	}
 	pdfVersions := []ipp.Value{ipp.Keyword("adobe-1.3"), ipp.Keyword("adobe-1.4"), ipp.Keyword("adobe-1.5"), ipp.Keyword("adobe-1.6"),

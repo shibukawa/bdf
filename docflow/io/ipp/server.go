@@ -22,10 +22,24 @@ import (
 // Path is where the nodes' printers are.
 const Path = "/ipp/print"
 
-var ippOperations = []ipp.Op{ipp.OpPrintJob, ipp.OpValidateJob, ipp.OpCancelJob, ipp.OpGetJobAttributes, ipp.OpGetJobs, ipp.OpGetPrinterAttributes,
-	ipp.OpCupsGetPrinters, ipp.OpCupsGetClasses, ipp.OpCupsGetDefault}
+// ippOperations are the operations of the nodes' printers on the
+// manager's own server, where one request is all there is to a job (no
+// instance waits for a document); portOperations those on a CUPS server
+// node's own port, where one process listens: Create-Job, Send-Document
+// and Close-Job too, as IPP Everywhere (and the clients of Mopria and
+// Windows) ask (created.go).
+var (
+	ippOperations = []ipp.Op{ipp.OpPrintJob, ipp.OpValidateJob, ipp.OpCancelJob, ipp.OpGetJobAttributes, ipp.OpGetJobs, ipp.OpGetPrinterAttributes,
+		ipp.OpCancelMyJobs, ipp.OpIdentifyPrinter, ipp.OpCupsGetPrinters, ipp.OpCupsGetClasses, ipp.OpCupsGetDefault}
+	portOperations = append(slices.Clone(ippOperations), ipp.OpCreateJob, ipp.OpSendDocument, ipp.OpCloseJob)
+)
 
-var ippFormats = []string{"application/octet-stream", "application/pdf", "application/x-bdf", "image/pwg-raster", "image/urf", "image/jpeg", "image/png", "text/csv", "application/json"}
+// ippFormats are the formats the printers take: PDF and the rasters of
+// AirPrint (image/urf), IPP Everywhere (image/pwg-raster) and Mopria
+// (application/PCLm, a PDF of strips of image, which the PDF converter
+// reads), .bdf, images and data.
+var ippFormats = []string{"application/octet-stream", "application/pdf", "application/x-bdf", "image/pwg-raster", "image/urf", "application/PCLm", "image/jpeg", "image/png",
+	"text/csv", "application/json"}
 
 // maxIPPMeta bounds the job attributes of a request taken as metadata.
 const maxIPPMeta = 32
@@ -127,6 +141,15 @@ func (q *ippRequest) uri(dest string) string {
 
 func (q *ippRequest) printerURI() string { return q.uri(q.dest) }
 
+// operations are the operations of the request's printer: those of a
+// CUPS server node's own port, or of the manager's own server.
+func (q *ippRequest) operations() []ipp.Op {
+	if q.server != "" {
+		return portOperations
+	}
+	return ippOperations
+}
+
 // destInfo tells the kind and the title of a destination: a CUPS server
 // node, the one kind that takes IPP.
 func (s *server) destInfo(ctx context.Context, name string) (kind, title string, err error) {
@@ -199,7 +222,7 @@ func (s *server) serveIPPTo(w http.ResponseWriter, r *http.Request, dest, server
 	w.Write(b)
 }
 
-func (s *server) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
+func (s *server) dispatch(ctx context.Context, q *ippRequest, body *bufio.Reader) {
 	switch q.req.Op() {
 	case ipp.OpCupsGetPrinters:
 		s.cupsPrinters(ctx, q, false)
@@ -224,6 +247,10 @@ func (s *server) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 		q.fail(ipp.StatusClientErrorNotFound, "the server is not a printer: ask %s/<name>", Path)
 		return
 	}
+	if !slices.Contains(q.operations(), q.req.Op()) {
+		q.fail(ipp.StatusServerErrorOperationNotSupported, "%s is not supported", q.req.Op())
+		return
+	}
 	switch q.req.Op() {
 	case ipp.OpGetPrinterAttributes:
 		s.printerAttributes(ctx, q)
@@ -233,23 +260,42 @@ func (s *server) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 		}
 	case ipp.OpPrintJob:
 		s.printJob(ctx, q, body)
+	case ipp.OpCreateJob:
+		s.createJob(ctx, q)
+	case ipp.OpSendDocument:
+		s.sendDocument(ctx, q, body)
+	case ipp.OpCloseJob:
+		s.closeJob(ctx, q)
 	case ipp.OpGetJobAttributes:
-		j := s.job(ctx, q)
-		if j != nil {
+		c, j := s.jobOrCreated(ctx, q)
+		switch {
+		case c != nil:
+			q.res.Add(ipp.TagJob, s.createdAttributes(q, c)...)
+		case j != nil:
 			q.res.Add(ipp.TagJob, s.jobAttributes(q, j)...)
 		}
 	case ipp.OpGetJobs:
 		s.jobs(ctx, q)
 	case ipp.OpCancelJob:
-		j := s.job(ctx, q)
+		c, j := s.jobOrCreated(ctx, q)
+		if c != nil {
+			if !createdOf(s.m).end(c, ipp.JobCanceled, "job-canceled-by-user") {
+				q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", c.state)
+			}
+			return
+		}
 		if j == nil {
 			return
 		}
 		if _, err := s.m.Cancel(ctx, j.ID, docflow.Mark{Worker: clip(q.user(), 80)}); err != nil {
 			q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", j.State)
 		}
-	default:
-		q.fail(ipp.StatusServerErrorOperationNotSupported, "%s is not supported", q.req.Op())
+	case ipp.OpCancelMyJobs:
+		s.cancelMyJobs(ctx, q)
+	case ipp.OpIdentifyPrinter:
+		// nothing to flash: the log tells it
+		s.m.Options().Log.Info("ipp: identify the printer", "dest", q.dest, "user", q.user(),
+			"actions", strings.Join(q.attr("identify-actions").Strings(), ","), "message", q.text("message"))
 	}
 }
 
@@ -345,32 +391,6 @@ func (s *server) printerAttributes(ctx context.Context, q *ippRequest) {
 
 // printJob takes a Print-Job: its document follows the request.
 func (s *server) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
-	if c := q.text("compression"); c != "" && c != "none" {
-		q.fail(ipp.StatusClientErrorCompressionNotSupported, "compression %s", c)
-		return
-	}
-	if f := q.text("document-format"); f != "" && !contains(ippFormats, f) {
-		q.fail(ipp.StatusClientErrorDocumentFormatNotSupported, "document-format %s", f)
-		return
-	}
-	f, err := os.CreateTemp(s.m.Options().TempDir, "bdf-pm-in-*")
-	if err != nil {
-		q.fail(ipp.StatusServerErrorInternal, "%v", err)
-		return
-	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	n, err := io.Copy(f, io.LimitReader(body, s.m.Options().MaxDocument+1))
-	if err != nil {
-		q.fail(ipp.StatusClientErrorDocumentAccessError, "the document: %v", err)
-		return
-	}
-	if n > s.m.Options().MaxDocument {
-		q.fail(ipp.StatusClientErrorRequestEntityTooLarge, "the document is larger than %d bytes", s.m.Options().MaxDocument)
-		return
-	}
-	name := firstOr(q.text("job-name"), q.text("document-name"))
-	meta := s.meta(q)
 	if q.by.Kind == docflow.PrincipalApp {
 		// an app prints to the entries that list it
 		if err := s.m.MaySend(ctx, q.r, q.dest); err != nil {
@@ -378,33 +398,73 @@ func (s *server) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 			return
 		}
 	}
-	j, err := s.m.Submit(ctx, q.dest, docflow.Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n,
-		ContentType: q.text("document-format"), Meta: meta})
+	s.take(ctx, q, body, docflow.Input{Name: firstOr(q.text("job-name"), q.text("document-name")), By: q.by, ClaimedUser: q.text("requesting-user-name"),
+		Meta: s.meta(q)})
+}
+
+// take takes the document that follows a request (Print-Job,
+// Send-Document) as the job of in (its name, sender and metadata, and
+// its number when Create-Job took one), and answers the job's state.
+// What the job is not is the error.
+func (s *server) take(ctx context.Context, q *ippRequest, body io.Reader, in docflow.Input) error {
+	if c := q.text("compression"); c != "" && c != "none" {
+		q.fail(ipp.StatusClientErrorCompressionNotSupported, "compression %s", c)
+		return docflow.ErrInvalid
+	}
+	if f := q.text("document-format"); f != "" && !contains(ippFormats, f) {
+		q.fail(ipp.StatusClientErrorDocumentFormatNotSupported, "document-format %s", f)
+		return docflow.ErrFormat
+	}
+	f, err := os.CreateTemp(s.m.Options().TempDir, "bdf-pm-in-*")
+	if err != nil {
+		q.fail(ipp.StatusServerErrorInternal, "%v", err)
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := io.Copy(f, io.LimitReader(body, s.m.Options().MaxDocument+1))
+	if err != nil {
+		q.fail(ipp.StatusClientErrorDocumentAccessError, "the document: %v", err)
+		return err
+	}
+	if n > s.m.Options().MaxDocument {
+		q.fail(ipp.StatusClientErrorRequestEntityTooLarge, "the document is larger than %d bytes", s.m.Options().MaxDocument)
+		return docflow.ErrInvalid
+	}
+	in.Source, in.Doc, in.Size, in.ContentType = "ipp", f, n, q.text("document-format")
+	j, err := s.m.Submit(ctx, q.dest, in)
 	if j == nil && (errors.Is(err, docflow.ErrFormat) || errors.Is(err, docflow.ErrInvalid)) {
 		// no job tells it: a client retries what is refused (a Mac's queue
 		// every few seconds), so the log does
-		s.m.Options().Log.Warn("ipp: print-job refused", "dest", q.dest, "name", name, "format", q.text("document-format"), "user", q.user(), "err", err)
+		s.m.Options().Log.Warn("ipp: print-job refused", "dest", q.dest, "name", in.Name, "format", q.text("document-format"), "user", q.user(), "err", err)
 	}
 	switch {
 	case errors.Is(err, docflow.ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
-		return
+		return err
 	case errors.Is(err, docflow.ErrInvalid), errors.Is(err, docflow.ErrRefused):
 		// a refusal of an assert after the node: the job is kept, aborted
 		q.fail(ipp.StatusClientErrorBadRequest, "%v", err)
-		return
+		return err
 	case err != nil:
 		s.m.Options().Log.Error("ipp: print-job", "dest", q.dest, "err", err)
 		q.fail(ipp.StatusServerErrorInternal, "the job could not be kept")
-		return
+		return err
 	}
+	q.res.Add(ipp.TagJob, s.jobStatus(q, j)...)
+	return nil
+}
+
+// jobStatus are the attributes a job's operations answer of it: its id,
+// its uri and its state.
+func (s *server) jobStatus(q *ippRequest, j *docflow.Job) []ipp.Attribute {
 	st, reason := ippState(j)
-	q.res.Add(ipp.TagJob,
+	return []ipp.Attribute{
 		ipp.Attr("job-id", ipp.Integer(int(j.Number))),
 		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(j.Number)))),
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
-	)
+	}
 }
 
 // meta is the metadata of a Print-Job (ippMeta), with document-metadata
@@ -446,9 +506,9 @@ func (s *server) meta(q *ippRequest) map[string]any {
 	return meta
 }
 
-// job finds the job a request names (job-id, or job-uri), of the
-// request's destination.
-func (s *server) job(ctx context.Context, q *ippRequest) *docflow.Job {
+// jobID is the job a request names (job-id, or job-uri), 0 (and the
+// request failed) when none.
+func (q *ippRequest) jobID() int32 {
 	var id int32
 	if a := q.attr("job-id"); a != nil {
 		id, _ = a.Int()
@@ -458,14 +518,28 @@ func (s *server) job(ctx context.Context, q *ippRequest) *docflow.Job {
 	}
 	if id <= 0 {
 		q.fail(ipp.StatusClientErrorBadRequest, "no job-id")
-		return nil
+		return 0
+	}
+	return id
+}
+
+// jobOrCreated finds the job a request names, of the request's
+// destination: one Create-Job made that waits for its document (or
+// ended without one), or a job.
+func (s *server) jobOrCreated(ctx context.Context, q *ippRequest) (*created, *docflow.Job) {
+	id := q.jobID()
+	if id == 0 {
+		return nil, nil
+	}
+	if c := createdOf(s.m).get(id); c != nil && c.dest == q.dest {
+		return c, nil
 	}
 	j, err := s.m.JobOfNumber(ctx, id)
 	if err != nil || j.Dest != q.dest {
 		q.fail(ipp.StatusClientErrorNotFound, "no job %d", id)
-		return nil
+		return nil, nil
 	}
-	return j
+	return nil, j
 }
 
 // ippState is a job's job-state and job-state-reasons.
@@ -525,6 +599,16 @@ func (s *server) jobs(ctx context.Context, q *ippRequest) {
 		return
 	}
 	n := 0
+	// the jobs Create-Job made, newest first: before the jobs
+	for _, c := range createdOf(s.m).of(q.dest) {
+		if which == "completed" && !c.state.Done() || which == "not-completed" && c.state.Done() {
+			continue
+		}
+		if n++; n > limit {
+			return
+		}
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(s.createdAttributes(q, c), req, nil)})
+	}
 	for i := range jobs {
 		j := &jobs[i]
 		switch which {

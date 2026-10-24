@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf/docflow"
+	"github.com/shibukawa/bdf/print/ipp"
 )
 
 // checkCups takes a CUPS server's port (the first free from
@@ -43,10 +44,15 @@ func checkCups(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docf
 // CUPS server with one printer does (the node itself at /printers/<name>
 // and at /ipp/print, the server itself at /), so that computers and
 // business systems print to it as to a CUPS server, and the job follows
-// the node's edges (To) from there.
+// the node's edges (To) from there; the printer's icons at
+// /icons/<size>.png (printer-icons).
 func serveCups(m *docflow.Manager, n *docflow.Node) http.Handler {
 	s := &server{m: m}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if file, ok := strings.CutPrefix(r.URL.Path, "/icons/"); ok && r.Method == http.MethodGet {
+			ipp.ServeIcon(w, r, file)
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{"node": n.Name, "kind": n.Kind, "port": n.Port, "to": n.To,
