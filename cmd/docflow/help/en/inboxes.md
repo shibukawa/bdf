@@ -11,7 +11,9 @@ An inbox is a node that holds every job that reaches it until someone releases i
 - The name in **Worker** is written on the record and in the audit log, as who released or discarded; your own name when it is empty.
 - The thumbnail downloads the document the item holds.
 
-Released and discarded items are shown under the list for the inbox's keep (14 days by default), with where each went and who sent it. Edit the node opens the inbox on the topology. A job canceled on the Jobs pages leaves its inboxes.
+Released and discarded items are shown under the list for the inbox's keep (14 days by default), with where each went and who sent it. Edit the node opens the inbox on the topology.
+
+The topology works an inbox too: click it, and its sidebar (under Usage, for the role topology) lists what it holds, each with its first page, the nodes it goes to, Release and Discard, and the Worker; Discard asks first there. A click on an item's page shows every page large, to zoom in, with Release and Discard beside the download ([Looking at a document](topology.md#lightbox)). A job canceled on the Jobs pages leaves its inboxes.
 
 ## Who works an inbox {#workers}
 

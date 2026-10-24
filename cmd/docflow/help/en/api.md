@@ -26,7 +26,7 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 | | |
 |---|---|
 | `GET /api/my/jobs?limit=` | the jobs the caller sees: theirs and their groups' (an administrator: every job) |
-| `GET /api/destinations` | the nodes the caller may send to |
+| `GET /api/destinations` | the nodes the caller may send to, `source` marking an entry: a person's are the sources of their scopes (with the role `topology`, every node of them), an app's the entries that list it |
 | `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | send the body — a document, or data for a template node — to a node; `X-Meta-*` headers as well, or a `multipart/form-data` body as an uploader takes it. 201 and the job |
 | `POST /api/locations/<display>/slips` | the same, to a display: the older name |
 | `GET /api/destinations/<node>/jobs?limit=` | the jobs sent to a node (admin) |
@@ -34,7 +34,7 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 | `GET /api/jobs/<n>/document?payload=` | its `.bdf` document — the last made, or the one received — or a payload by id |
 | `GET /api/jobs/<n>/pages/<p>.png` | a page of its document, drawn |
 | `POST /api/jobs/<n>/cancel` | cancel it |
-| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`: send it again as a new job of the caller's, to a node they may send to; the job's node by default |
+| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`: send it again as a new job of the caller's, to a node they may send to (a person: a source, or the job's own node); the job's node by default |
 
 ## The topology {#topology}
 
@@ -43,7 +43,7 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | | |
 |---|---|
 | `GET /api/topology` | the nodes and their edges, with `takes`, `emits`, `accepts` (what may be sent to the node now) and `broken` (the edges from it that no longer connect: [Broken edges](flow.md#broken)); an administrator gets the settings and the counts too |
-| `GET /api/topology/live` | the activity of the jobs the caller sees: counts at each node, and the legs of the last ten minutes; an ETag to poll with (304 while nothing changed) |
+| `GET /api/topology/live` | the activity of the jobs the caller sees: counts at each node, the first page of the newest document at a sink, a display, an inbox or an archive (`thumb`), and the legs of the last ten minutes; an ETag to poll with (304 while nothing changed) |
 | `GET`, `PUT /api/layout` | where the nodes are drawn |
 | `GET /api/nodes`, `GET /api/nodes/<name>` | every node; one node |
 | `PUT /api/nodes/<name>` | save a node: its `kind` and the kind's settings ([Node kinds](nodes.md)); the answer of a new uploader (or S3 trigger) carries its `key`, once |
@@ -64,15 +64,18 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `PUT /api/nodes/<node>/templates/<id>?name=` | upload one, the file as the body, with the file's name |
 | `DELETE /api/nodes/<node>/templates/<id>` | delete it |
 
-## Displays, sinks and printers {#devices}
+## Displays, sinks, archives and printers {#devices}
 
 | | |
 |---|---|
-| `GET /api/nodes/<display>/board` | the slips of a display |
+| `GET /api/nodes/<display>/board` | the slips of a display: every one to the role topology, those of the jobs the caller sees to anyone else |
+| `GET /api/slips/<id>/pages/<p>.png?w=`, `…/document` | a page of a slip, and its document, to those its board shows it to |
 | `GET /api/nodes/<display>/devices` | its devices |
 | `POST /api/nodes/<display>/enrollments` | a one-time code to enroll a device, with its QR code and URL |
 | `DELETE /api/devices/<id>` | remove a device |
 | `GET /api/nodes/<sink>/latest` | the latest documents a sink keeps |
+| `GET /api/nodes/<archive>/archived?limit=` | the latest documents an archive wrote (50 at most, 20 by default) that the caller sees, newest first |
+| `GET /api/nodes/<archive>/archived/<key>/pages/<p>.png?w=`, `…/document` | a page of one, drawn from the archive's store, and the document (in the audit log) |
 | `GET /api/nodes/<printer>/preview`, `…/preview/<job>/pages/<p>.png` | what a printer's fake printer received, and its pages |
 
 ## The nodes' API {#nodes}

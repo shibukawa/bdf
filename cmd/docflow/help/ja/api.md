@@ -26,7 +26,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | | |
 |---|---|
 | `GET /api/my/jobs?limit=` | 呼び手が見られるジョブ。自分のものと自分のグループのもの（管理者はすべてのジョブ） |
-| `GET /api/destinations` | 呼び手が送れるノード |
+| `GET /api/destinations` | 呼び手が送れるノード。`source` は入口の印。人なら自分のスコープのソース（役割 `topology` ならスコープのすべてのノード）、アプリなら自分を挙げた入口 |
 | `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。アップローダーと同じく `multipart/form-data` のボディも受け取ります。201 とジョブ |
 | `POST /api/locations/<display>/slips` | 同じものをディスプレイに。古い名前です |
 | `GET /api/destinations/<node>/jobs?limit=` | ノードに送られたジョブ（管理者） |
@@ -34,7 +34,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | `GET /api/jobs/<n>/document?payload=` | その `.bdf` 文書（最後に作られたもの、なければ受け取ったもの）、または id で指定したペイロード |
 | `GET /api/jobs/<n>/pages/<p>.png` | 文書のページを描いたもの |
 | `POST /api/jobs/<n>/cancel` | 取り消す |
-| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`。呼び手の新しいジョブとして、送れるノードへもう一度送る。既定はジョブのノード |
+| `POST /api/jobs/<n>/reprint` | `{"to": "<node>"}`。呼び手の新しいジョブとして、送れるノード（人ならソースか、ジョブ自身のノード）へもう一度送る。既定はジョブのノード |
 
 ## トポロジー {#topology}
 
@@ -43,7 +43,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | | |
 |---|---|
 | `GET /api/topology` | ノードとエッジ。`takes`、`emits`、`accepts`（いまノードに送れるもの）、`broken`（そこから出る、もうつながっていないエッジ。[壊れたエッジ](flow.md#broken)）付き。管理者には設定と数も |
-| `GET /api/topology/live` | 呼び手が見られるジョブの動き。各ノードの数と直近 10 分のレグ。ポーリング用の ETag（変化がなければ 304） |
+| `GET /api/topology/live` | 呼び手が見られるジョブの動き。各ノードの数、シンク・ディスプレイ・インボックス・アーカイブにある最新の文書の 1 ページ目（`thumb`）、直近 10 分のレグ。ポーリング用の ETag（変化がなければ 304） |
 | `GET`、`PUT /api/layout` | ノードを描く位置 |
 | `GET /api/nodes`、`GET /api/nodes/<name>` | すべてのノード。1 つのノード |
 | `PUT /api/nodes/<name>` | ノードを保存する。`kind` と種類ごとの設定（[ノードの種類](nodes.md)）。新しいアップローダー（または S3 トリガー）の応答には `key` が 1 度だけ入ります |
@@ -64,15 +64,18 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | `PUT /api/nodes/<node>/templates/<id>?name=` | アップロードする。ファイルをボディに、ファイル名を添えて |
 | `DELETE /api/nodes/<node>/templates/<id>` | 削除する |
 
-## ディスプレイ・シンク・プリンタ {#devices}
+## ディスプレイ・シンク・アーカイブ・プリンタ {#devices}
 
 | | |
 |---|---|
-| `GET /api/nodes/<display>/board` | ディスプレイの伝票 |
+| `GET /api/nodes/<display>/board` | ディスプレイの伝票。役割 topology にはすべて、ほかの人には見られるジョブのもの |
+| `GET /api/slips/<id>/pages/<p>.png?w=`、`…/document` | 伝票のページと文書。ボードがその伝票を見せる人に |
 | `GET /api/nodes/<display>/devices` | そのデバイス |
 | `POST /api/nodes/<display>/enrollments` | デバイスを登録する 1 度きりのコード。QR コードと URL 付き |
 | `DELETE /api/devices/<id>` | デバイスを外す |
 | `GET /api/nodes/<sink>/latest` | シンクが保持する最新の文書 |
+| `GET /api/nodes/<archive>/archived?limit=` | アーカイブが書いた最新の文書（最大 50 件、既定 20 件）のうち呼び手が見られるもの。新しい順 |
+| `GET /api/nodes/<archive>/archived/<key>/pages/<p>.png?w=`、`…/document` | そのページ（アーカイブのストアから描く）と文書（監査ログに残ります） |
 | `GET /api/nodes/<printer>/preview`、`…/preview/<job>/pages/<p>.png` | プリンタの偽プリンタが受け取ったものと、そのページ |
 
 ## ノードの API {#nodes}

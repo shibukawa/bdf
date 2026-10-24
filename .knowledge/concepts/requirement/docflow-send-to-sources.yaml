@@ -1,0 +1,100 @@
+id: requirement:docflow-send-to-sources
+type: requirement
+title: Docflow のページから人が送れるのはソース（入口）だけ。役割 topology はデバッグのためにどのノードにも送れる
+summary: >-
+  2026-10-24 利用者の依頼。ジョブのページ（トップ）のフォームで任意のノードに送れたのを、ソースのノード（アップローダー、CUPS サーバー、
+  S3 トリガー。Kind.Role が entry のもの）だけを選べるようにする。トポロジーを変えられる人（役割 topology と管理者）は、デバッグのために
+  全部のノードに送れてよい。同日、ブランチ claude/docflow-node-send-restriction-8d0bf0 に実装した（facts.implementation）。
+lifecycle: active
+authority: authored
+aliases:
+- ソース
+- source
+- 入口
+- entry
+- 送り先
+- destination
+- /api/destinations
+- 試し送り
+- debug send
+constraints:
+- 人（PrincipalUser）がページから送れるのは、スコープで送れる（CanSendTo）ソースだけ。役割 topology（管理者を含む）はスコープで送れるどのノードにも送れる
+- 一覧から外すだけでなく、サーバーで断る（403、「not a source」）。GET /api/destinations、POST /api/destinations/<node>/jobs、POST /api/jobs/<n>/reprint が同じ判定（Viewer.maySendAt）を使う
+- /api/destinations は入口に source を付ける。ジョブのページは、ソースのほかのノードがあるとき（役割 topology）、ソースとほかのノードを optgroup で分ける
+- 文は英語と日本語の両方（_() と ja.js、pages.yaml）。マニュアルも両方
+non_goals:
+- サブミットトークンとアプリの送り先を変えること（アプリはもともと自分を挙げた入口だけ。トークンは WMS などの連携で、ディスプレイに直接送る使い方がある）
+- 役割 topology にスコープ（group・personal）を越えさせること。越えるのは今のとおり管理者だけ
+capabilities:
+  person-sources-only:
+    state: implemented
+    about: capability:docflow/person-sends-to-sources
+    evidence: {path: docflow/scope.go, locator: Viewer.maySendAt}
+  destinations-source-flag:
+    state: implemented
+    about: capability:docflow/destinations-source
+    evidence: {path: docflow/people.go, locator: 'Destination.Source、Destinations の PrincipalUser の分岐'}
+  jobs-page-groups:
+    state: implemented
+    about: capability:docflow/jobs-destination-groups
+    evidence: {path: cmd/docflow/public/jobs.js, locator: loadDestinations}
+  topology-view-hint:
+    state: implemented
+    about: capability:docflow/topology-print-hint
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'viewSidebar の「Documents come in at a source」（ROLE_OF）'}
+acceptance:
+  e1-member:
+    text: 役割の無い人のジョブのページの送り先に、スコープで送れるソースだけが並ぶ。ディスプレイやキューに POST すると 403
+    verified_by: [go-tests, browser]
+  e2-topology:
+    text: 役割 topology（管理者）の送り先には、ソースの下にほかのノードが分けて並び、ディスプレイにも送れる（201）
+    verified_by: [go-tests, browser]
+  e3-reprint:
+    text: 再印刷は、ジョブ自身のノードならスコープだけで通り、ほかのノードはソースでなければ 403（役割 topology は除く）
+    verified_by: [go-tests]
+verification:
+  go-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/... ./cmd/docflow/...（TestScope、TestRolesAndReprint、TestDownload、handlers の TestLogin・TestDevRoster）
+    authority: observed
+  browser:
+    state: passed
+    method: manual
+    test: >-
+      一時的なテスト（コミットしない）で devidp.toml の roster のまま立て、in-app のブラウザで Mina Member のジョブのページ（front、wh-a-in の 2 つだけ）、
+      ディスプレイへの fetch（403）、トポロジーのディスプレイ（「文書はソースから入ります」）とアップローダー（「ここで印刷」）、
+      Ada Admin のジョブのページ（「ソース」と「ほかのノード（動作確認用、役割 topology）」の 2 つの optgroup）を確かめた
+    authority: observed
+open_questions:
+  reprint-own-node:
+    text: 再印刷で、ジョブ自身のノードがソースでないとき（アプリやトークンがディスプレイに送ったジョブ）に、グループのメンバーが刷り直せるか
+    state: answered
+    resolution: 暫定（Claude）：通す。ジョブはもうそのノードから入っており、新しい入口を開かない。Reprint ボタンの既定の動きも残る
+  topology-scope:
+    text: 役割 topology は group・personal のスコープを越えて送れるか（利用者の「全部のノード」）
+    state: answered
+    resolution: 暫定（Claude）：越えない。種類の制限だけを外す。スコープはジョブが誰のものかも決めるので、越えるのは今のとおり管理者だけ
+  tokens:
+    text: サブミットトークンにも同じ制限をかけるか
+    state: answered
+    resolution: 暫定（Claude）：かけない。依頼はページの話で、トークンは連携の設定（ディスプレイへ直接送る使い方が今のテストにもある）
+relations:
+- relation: refines
+  to: requirement:print-manager-auth
+- relation: related_to
+  to: requirement:docflow
+facts:
+  request:
+    text: >-
+      2026-10-24 利用者「docflowのトップページで任意のノードにデータ送信できるが、sourceのノードだけを選択できるようにしたい。
+      トポロジーをいじれる管理者は全部のノードに投入できてもいいと思うが。デバッグ用途で。」
+  implementation:
+    branch: claude/docflow-node-send-restriction-8d0bf0（2026-10-24）
+    server: docflow/scope.go の Viewer.maySendAt（CanSendTo と isEntry、Can(RoleTopology)）。people.go の Destinations と Destination.Source、http.go の submit と reprint
+    pages: jobs.js（admin.js の KINDS、optgroup、送れるソースが無いときの文）、topology.js（ソースでないノードの案内）、ja.js、pages.yaml の jobs-print-note・jobs-reprint-note
+    docs: cmd/docflow/help/{en,ja} の jobs・entries・roles・topology・api・index、cmd/docflow/README.md
+history:
+  implemented:
+    summary: 2026-10-24 依頼の日に実装した。再印刷・スコープ・トークンの扱いは Claude の暫定（open_questions）
+version: 1

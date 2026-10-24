@@ -219,15 +219,22 @@ func (v *Viewer) is(owner string) bool {
 }
 
 // Submitted tells the job's submitter.
-func (v *Viewer) Submitted(j *Job) bool {
-	by := j.SubmittedBy
+func (v *Viewer) Submitted(j *Job) bool { return v.sent(j.SubmittedBy) }
+
+// sent tells the sender of a job, as the job names them.
+func (v *Viewer) sent(by *Principal) bool {
 	return v != nil && by != nil && by.Kind == v.Kind && by.ID != "" && by.ID == v.ID
 }
 
 // CanSee tells whether the viewer may see a job: its submitter, the
 // members of its group, the auditors and the admins.
-func (v *Viewer) CanSee(j *Job) bool {
-	return v != nil && (v.Admin || v.Can(RoleAudit) || v.Member(j.Group) || v.Submitted(j))
+func (v *Viewer) CanSee(j *Job) bool { return v.seesSent(j.SubmittedBy, j.Group) }
+
+// seesSent tells whether the viewer may see what a job sent by someone
+// of a group became, as CanSee tells of the job: what a downloader lists
+// or an archive wrote, which outlives the job.
+func (v *Viewer) seesSent(by *Principal, group string) bool {
+	return v != nil && (v.Admin || v.Can(RoleAudit) || v.Member(group) || v.sent(by))
 }
 
 // CanCancel tells whether the viewer may cancel a job: its submitter (an
@@ -252,6 +259,24 @@ func (v *Viewer) CanSendTo(scope, owner string) bool {
 		return v.Admin || v.is(owner)
 	}
 	return false
+}
+
+// maySendAt tells whether a person may send a document to a node from
+// the pages (the form of Jobs, Print here on the topology, a reprint): a
+// node of a scope they may send to (CanSendTo) that is a source, an entry
+// where documents come into the topology (an uploader, a CUPS server, an
+// S3 trigger), so that what an entry takes and sets holds for what people
+// send as for what computers and applications do. A person with the role
+// topology sends to any node, to try a part of the topology out. The
+// error says why not.
+func (v *Viewer) maySendAt(n *Node) error {
+	if !v.CanSendTo(n.Scope, n.Owner) {
+		return fmt.Errorf("you may not send to %s", n.Name)
+	}
+	if !isEntry(n.Kind) && !v.Can(RoleTopology) {
+		return fmt.Errorf("%s is not a source: documents come into the topology at a source (an uploader, a CUPS server), and you may send to one of them", n.Name)
+	}
+	return nil
 }
 
 // destScope tells a destination's scope and owner, and the group its

@@ -260,8 +260,26 @@ func (in *interp) syncStroke() {
 	}
 }
 
-func (in *interp) syncLine() {
-	lw := in.gs.lineWidth
+// syncLine sets the line of a path stroked in user space.
+func (in *interp) syncLine() { in.syncLineScaled(1) }
+
+// syncTextLine sets the line of stroked glyphs (text rendering modes 1, 2,
+// 5 and 6). They are drawn in the block of the text matrix
+// (ensureTextBlock), but the line width and the dashes of the graphics
+// state are in user space, as for a path: scaled into the block, or the
+// faux bold of a Tm of 10.44 with a font size of 1 strokes ten times as wide.
+func (in *interp) syncTextLine() {
+	s := in.text.base.scaleFactor() * math.Sqrt(math.Abs(in.gs.hscale))
+	if s < 1e-9 {
+		s = 1
+	}
+	in.syncLineScaled(1 / s)
+}
+
+// syncLineScaled sets the line with the lengths of the graphics state
+// times k.
+func (in *interp) syncLineScaled(k float64) {
+	lw := in.gs.lineWidth * k
 	if lw <= 0 {
 		// Zero-width lines are the thinnest renderable line; approximate one device pixel.
 		lw = 0.8 / math.Max(in.gs.ctm.scaleFactor(), 1e-6)
@@ -271,11 +289,18 @@ func (in *interp) syncLine() {
 		in.em.lineWidth, in.em.lineCap, in.em.lineJoin, in.em.miterLimit = lw, in.gs.lineCap, in.gs.lineJoin, in.gs.miterLimit
 		in.em.lineSet = true
 	}
-	key := dashKey(in.gs.dash, in.gs.dashPhase)
+	dash, phase := in.gs.dash, in.gs.dashPhase*k
+	if k != 1 && len(dash) > 0 {
+		dash = make([]float64, len(in.gs.dash))
+		for i, d := range in.gs.dash {
+			dash[i] = d * k
+		}
+	}
+	key := dashKey(dash, phase)
 	if key != in.em.dashKey {
-		segs := make([]float32, 0, len(in.gs.dash))
+		segs := make([]float32, 0, len(dash))
 		allZero := true
-		for _, d := range in.gs.dash {
+		for _, d := range dash {
 			segs = append(segs, float32(d))
 			if d > 0 {
 				allZero = false
@@ -284,7 +309,7 @@ func (in *interp) syncLine() {
 		if allZero {
 			segs = nil
 		}
-		in.obj.Dash(segs, float32(in.gs.dashPhase))
+		in.obj.Dash(segs, float32(phase))
 		in.em.dashKey = key
 	}
 }

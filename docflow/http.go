@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -54,14 +55,15 @@ func Handler(m *Manager) http.Handler {
 	}
 
 	// the nodes, of every kind; a display's board, devices and enrollment
-	// codes, and a template node's templates, are under their node
+	// codes, a template node's templates and what an archive wrote lately
+	// are under their node (the board and the archive's are the viewer's)
 	mux.HandleFunc("GET /api/nodes", h.adminOnly(h.listNodes))
 	mux.HandleFunc("GET /api/nodes/{name}", h.adminOnly(h.getNode))
 	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
 	mux.HandleFunc("DELETE /api/nodes/{name}", h.adminOnly(h.deleteNode))
 	mux.HandleFunc("POST /api/nodes/{name}/key", h.adminOnly(h.rotateKey))
 	mux.HandleFunc("POST /api/nodes/{name}/rename", h.adminOnly(h.renameNode))
-	mux.HandleFunc("GET /api/nodes/{name}/board", h.adminOnly(h.board))
+	mux.HandleFunc("GET /api/nodes/{name}/board", h.userOnly(h.board))
 	mux.HandleFunc("GET /api/nodes/{name}/devices", h.adminOnly(h.listDevices))
 	mux.HandleFunc("POST /api/nodes/{name}/enrollments", h.adminOnly(h.enrollment))
 	mux.HandleFunc("GET /api/nodes/{name}/templates", h.adminOnly(h.listTemplates))
@@ -107,6 +109,9 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET "+download+"/{node}/{job}/pages/{page}", h.cors(h.downloadPage))
 	mux.HandleFunc("OPTIONS "+download+"/{rest...}", h.cors(nil))
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
+	mux.HandleFunc("GET /api/nodes/{name}/archived", h.userOnly(h.listArchived))
+	mux.HandleFunc("GET /api/nodes/{name}/archived/{key}/pages/{page}", h.userOnly(h.archivedPage))
+	mux.HandleFunc("GET /api/nodes/{name}/archived/{key}/document", h.userOnly(h.archivedDocument))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))
 	mux.HandleFunc("GET /api/nodes/{name}/preview/{job}/pages/{page}", h.adminOnly(h.previewPage))
 	mux.HandleFunc("POST /api/locations/{name}/slips", h.submit)
@@ -116,7 +121,8 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
 	mux.HandleFunc("GET /api/audit", h.auditOnly(h.auditLog))
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
-	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
+	mux.HandleFunc("GET /api/slips/{id}/document", h.userOnly(h.slipDocument))
+	mux.HandleFunc("GET /api/slips/{id}/pages/{page}", h.userOnly(h.slipPage))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
 	// the topology is everyone's to see (an administrator sees its
 	// settings too), as is where it is drawn; its activity is the viewer's
@@ -242,13 +248,44 @@ func (h *handler) roleOnly(role string, fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (h *handler) board(w http.ResponseWriter, r *http.Request) {
+// board is a display's board as the viewer sees it: every slip for the
+// role topology, the slips of the jobs they see for anyone else.
+func (h *handler) board(w http.ResponseWriter, r *http.Request, v *Viewer) {
 	b, err := h.m.Board(r.Context(), r.PathValue("name"))
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
+	if !v.Can(RoleTopology) {
+		hidden := func(s Slip) bool { return !h.m.seesSlip(r.Context(), v, &s) }
+		b.Open, b.Ended = slices.DeleteFunc(b.Open, hidden), slices.DeleteFunc(b.Ended, hidden)
+	}
 	writeJSON(w, http.StatusOK, b)
+}
+
+// seesSlip tells whether the viewer sees a slip: the role topology every
+// one, anyone else those of the jobs they see (a slip on a board keeps
+// its job).
+func (m *Manager) seesSlip(ctx context.Context, v *Viewer, s *Slip) bool {
+	if v.Can(RoleTopology) {
+		return true
+	}
+	j, err := m.JobOfNumber(ctx, s.Job)
+	return err == nil && v.CanSee(j)
+}
+
+// seenSlip is the slip a request names, of those the viewer sees; any
+// other is not found.
+func (h *handler) seenSlip(w http.ResponseWriter, r *http.Request, v *Viewer) (*Slip, bool) {
+	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
+	if err == nil && !h.m.seesSlip(r.Context(), v, s) {
+		err = fmt.Errorf("%w: slip %q", ErrNotFound, r.PathValue("id"))
+	}
+	if err != nil {
+		h.writeErr(w, err)
+		return nil, false
+	}
+	return s, true
 }
 
 func (h *handler) listDevices(w http.ResponseWriter, r *http.Request) {
@@ -322,10 +359,10 @@ func (h *handler) getSlip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request) {
-	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
-	if err != nil {
-		h.writeErr(w, err)
+// slipDocument downloads the document of a slip the viewer sees.
+func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request, v *Viewer) {
+	s, ok := h.seenSlip(w, r, v)
+	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-bdf")
@@ -333,6 +370,30 @@ func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="slip-`+s.ID+`.bdf"`)
 	if err := h.m.WritePayload(r.Context(), firstOr(s.Payload, jobID(s.Job)), w); err != nil {
 		panic(http.ErrAbortHandler)
+	}
+}
+
+// slipPage draws a page of a slip the viewer sees, as its board's
+// devices do: /api/slips/{id}/pages/{n}.png?w= (800 pixels wide by
+// default).
+func (h *handler) slipPage(w http.ResponseWriter, r *http.Request, v *Viewer) {
+	s, ok := h.seenSlip(w, r, v)
+	if !ok {
+		return
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(r.PathValue("page"), ".png"))
+	if err != nil {
+		h.writeErr(w, ErrNotFound)
+		return
+	}
+	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	if width == 0 {
+		width = 800
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	if err := h.m.WritePage(r.Context(), firstOr(s.Payload, jobID(s.Job)), s.Pages, n-1, width, w); err != nil {
+		h.writeErr(w, err)
 	}
 }
 
@@ -604,7 +665,10 @@ func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer,
 }
 
 // reprint sends a job's document again, as a new job of the viewer, to
-// a node they may send to: {"to": "<node>"}, or the job's destination.
+// a node they may send to: {"to": "<node>"}, or the job's destination. A
+// person sends to a source (maySendAt), or again to the job's own node
+// of a scope of theirs: where the job came in already, which is no new
+// way in.
 func (h *handler) reprint(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	var in struct {
 		To string `json:"to"`
@@ -617,13 +681,13 @@ func (h *handler) reprint(w http.ResponseWriter, r *http.Request, v *Viewer, j *
 	}
 	dest := firstOr(in.To, j.Dest)
 	if v.Kind == PrincipalUser {
-		scope, owner, _, err := h.m.destScope(r.Context(), dest)
+		n, err := h.m.Node(r.Context(), dest)
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		if !v.CanSendTo(scope, owner) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + dest})
+		if err := v.maySendAt(n); err != nil && (dest != j.Dest || !v.CanSendTo(n.Scope, n.Owner)) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return
 		}
 	} else if err := h.m.appMaySend(r.Context(), v, dest, false); err != nil {
@@ -685,14 +749,19 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if signedIn && v.Kind == PrincipalUser {
-		// a person signed in sends as themselves, to a node they may
-		scope, owner, _, err := h.m.destScope(r.Context(), r.PathValue("name"))
+		// a person signed in sends as themselves, to a source they may
+		// send to (to any node of their scopes, with the role topology)
+		n, err := h.m.Node(r.Context(), r.PathValue("name"))
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		if !v.CanSendTo(scope, owner) || !sameOrigin(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + r.PathValue("name")})
+		if !sameOrigin(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + n.Name})
+			return
+		}
+		if err := v.maySendAt(n); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return
 		}
 		by, ok = v.Principal(), true

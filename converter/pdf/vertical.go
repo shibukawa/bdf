@@ -144,12 +144,12 @@ func (in *interp) flushVertical() {
 		in.syncAlpha(false)
 	case 1, 5:
 		in.syncStroke()
-		in.syncLine()
+		in.syncTextLine()
 		in.syncAlpha(true)
 	case 2, 6:
 		in.syncFill()
 		in.syncStroke()
-		in.syncLine()
+		in.syncTextLine()
 		in.syncAlpha(false)
 	default:
 		transparent := bdf.RGBA(0, 0, 0, 0)

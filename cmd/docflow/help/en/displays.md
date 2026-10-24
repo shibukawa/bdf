@@ -40,4 +40,6 @@ The board (`/tablet`) shows the slips of the display under two tabs: **Open**, t
 
 Every slip shows its expiry ("until …"): the display's keep (`keep`, 14 days) after it came. Until then it stays, new, opened or done; at the expiry it leaves the board, done or not, and the job's document goes when nothing else needs it.
 
+On the topology, the display's sidebar shows the slips on its board — those of the jobs you see; every one, for the role topology —, open and the latest done or canceled, each with its state and its first page; a click shows its pages ([Looking at a document](topology.md#lightbox)).
+
 A job canceled on the Jobs pages leaves the board: its slip shows under Done and canceled, and does not open. A slip the fallback printed on paper — because nobody opened it in time, or no device was connected — is marked "Printed on paper" and stays open until someone marks it done.

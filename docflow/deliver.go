@@ -566,6 +566,12 @@ func (m *Manager) archive(ctx context.Context, n *Node, j *Job, p *Payload, trac
 	if _, err := st.Insert(ctx, key+".json", bytes.NewReader(b)); err != nil && !errors.Is(err, yuruidb.ErrAlreadyExists) {
 		return "", err
 	}
+	// what it wrote is seen on the topology: the list of the latest is
+	// not the archive, and a write to it that fails is logged
+	if err := m.noteArchived(ctx, n.Name, ArchivedEntry{Job: j.Number, Name: j.Name, Kind: p.Kind, Format: p.Format, Pages: p.Pages, Size: p.Size, Received: j.Received, Archived: rec.Archived,
+		Key: key, Object: object, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Group: j.Group}); err != nil {
+		m.o.Log.Warn("note what an archive wrote", "archive", n.Name, "job", j.Number, "err", err)
+	}
 	return key, nil
 }
 
