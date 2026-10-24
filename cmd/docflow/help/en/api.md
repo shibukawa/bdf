@@ -43,7 +43,7 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | | |
 |---|---|
 | `GET /api/topology` | the nodes and their edges, with `takes`, `emits`, `accepts` (what may be sent to the node now) and `broken` (the edges from it that no longer connect: [Broken edges](flow.md#broken)); an administrator gets the settings and the counts too |
-| `GET /api/topology/live` | the activity of the jobs the caller sees: counts at each node, and the legs of the last ten minutes; an ETag to poll with (304 while nothing changed) |
+| `GET /api/topology/live` | the activity of the jobs the caller sees: counts at each node, the first page of the newest document at a sink, a display, an inbox or an archive (`thumb`), and the legs of the last ten minutes; an ETag to poll with (304 while nothing changed) |
 | `GET`, `PUT /api/layout` | where the nodes are drawn |
 | `GET /api/nodes`, `GET /api/nodes/<name>` | every node; one node |
 | `PUT /api/nodes/<name>` | save a node: its `kind` and the kind's settings ([Node kinds](nodes.md)); the answer of a new uploader (or S3 trigger) carries its `key`, once |
@@ -64,15 +64,18 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `PUT /api/nodes/<node>/templates/<id>?name=` | upload one, the file as the body, with the file's name |
 | `DELETE /api/nodes/<node>/templates/<id>` | delete it |
 
-## Displays, sinks and printers {#devices}
+## Displays, sinks, archives and printers {#devices}
 
 | | |
 |---|---|
-| `GET /api/nodes/<display>/board` | the slips of a display |
+| `GET /api/nodes/<display>/board` | the slips of a display: every one to the role topology, those of the jobs the caller sees to anyone else |
+| `GET /api/slips/<id>/pages/<p>.png?w=`, `…/document` | a page of a slip, and its document, to those its board shows it to |
 | `GET /api/nodes/<display>/devices` | its devices |
 | `POST /api/nodes/<display>/enrollments` | a one-time code to enroll a device, with its QR code and URL |
 | `DELETE /api/devices/<id>` | remove a device |
 | `GET /api/nodes/<sink>/latest` | the latest documents a sink keeps |
+| `GET /api/nodes/<archive>/archived?limit=` | the latest documents an archive wrote (50 at most, 20 by default) that the caller sees, newest first |
+| `GET /api/nodes/<archive>/archived/<key>/pages/<p>.png?w=`, `…/document` | a page of one, drawn from the archive's store, and the document (in the audit log) |
 | `GET /api/nodes/<printer>/preview`, `…/preview/<job>/pages/<p>.png` | what a printer's fake printer received, and its pages |
 
 ## The nodes' API {#nodes}

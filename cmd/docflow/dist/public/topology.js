@@ -15,9 +15,13 @@
 // explains). A node is put before the nodes after it, with no edges yet,
 // and renamed when its name is changed: its edges and what is kept under
 // its name follow. Looking: a node shows the jobs sent to it that the
-// person sees, and a form to print there when they may.
+// person sees, and a form to print there when they may. Both show what is
+// at a node now, read again as the activity changes (atSection): what a
+// sink keeps, a display's board, what an inbox holds (released or
+// discarded there by those who work it), what an archive wrote lately
+// and what a downloader lists, each document's pages in the lightbox.
 
-import { $, _, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, listedSection, locale, onChange, PAYLOADS, sender, sentences, since, stateBadge, STATES, status } from "./admin.js";
+import { $, _, api, archivedSection, boardSection, button, changed, el, heldSection, keptSection, kindBadge, KINDS, legsOf, listedSection, locale, onChange, PAYLOADS, sender, sentences, since, stateBadge, STATES, status } from "./admin.js";
 import { createCanvas, iconOf, legend, payloadColor, PRINTS, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
@@ -181,6 +185,8 @@ async function poll() {
       if (!editable) {
         jobs = await api("GET", "/api/my/jobs?limit=200");
         renderSidebar();
+      } else if (at && at.box.isConnected) {
+        at.box.refresh();
       }
     } else if (res.status !== 304) {
       throw new Error("live " + res.status);
@@ -819,8 +825,24 @@ function cupsQueueURL(form) {
   return `${f("f-cscheme").value}://${host}:${f("f-cport").value.trim() || 631}${q.dataset.path || "/"}${name}`;
 }
 
-// Looking: the sidebar of a node is its counts, a form to print there
-// when the person may, and the jobs there they see.
+// AT_NODE are the sections of what is at a node now, by its kind.
+const AT_NODE = { sink: keptSection, display: boardSection, inbox: heldSection, archive: archivedSection, download: listedSection };
+// at is the section of the node in the sidebar: {name, kind, box}.
+let at = null;
+
+// atSection is the section of what is at a node now, or null: the one
+// shown already while the sidebar is of the same node, read again (what
+// was chosen in it stays), else a new one.
+function atSection(n) {
+  const make = AT_NODE[n.kind];
+  if (!make) return null;
+  if (at && at.name === n.name && at.kind === n.kind) at.box.refresh();
+  else at = { name: n.name, kind: n.kind, box: make(n.name) };
+  return at.box;
+}
+
+// Looking: the sidebar of a node is its counts, what is at it now, a form
+// to print there when the person may, and the jobs there they see.
 
 function countsOf(name) {
   const c = (live && live.nodes[name]) || {};
@@ -866,6 +888,8 @@ function viewSidebar() {
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
   const k = kindsLine(n);
   if (k) parts.push(k);
+  const now = atSection(n);
+  if (now) parts.push(now);
   if (n.kind === "cups") parts.push(printerSetup(n));
   const dest = dests.find((d) => d.name === n.name);
   if (dest) {
@@ -927,8 +951,6 @@ function viewSidebar() {
   sec.append(list);
   parts.push(sec);
   aside.replaceChildren(...parts);
-  if (n.kind === "sink") keptSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
-  if (n.kind === "download") listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
 }
 
 // tab is the sidebar's tab of a saved node: its settings, or its usage
@@ -1177,8 +1199,11 @@ function renderSidebar() {
     for (const [id, p] of Object.entries(panels)) p.style.display = id === tab ? "" : "none";
   };
   for (const [id, label] of [["settings", _("Settings")], ["usage", _("Usage")]]) {
-    const t = el("button", label, { type: "button", role: "tab", className: "tab" });
+    const t = el("button", label, { type: "button", role: "tab", className: "tab gap-1" });
     t.dataset.tab = id;
+    // what waits at an inbox or a display, worked under Usage
+    const waiting = id === "usage" ? (n.kind === "inbox" ? n.held : n.kind === "display" ? n.open : 0) : 0;
+    if (waiting) t.append(el("span", String(waiting), { className: "badge badge-xs badge-warning", title: n.kind === "inbox" ? _("{n} held", { n: waiting }) : _("{n} open", { n: waiting }) }));
     t.addEventListener("click", () => {
       tab = id;
       showTab();
@@ -1713,10 +1738,14 @@ async function remove(name) {
   }
 }
 
-// usagePanel is how a saved node is used: how computers, applications
-// and devices reach it from outside (a CUPS server, an uploader, an S3
-// trigger, an inbox, a downloader, a display), and what is at it now.
+// usagePanel is how a saved node is used: what is at it now (first: a
+// sink's, a display's, an inbox's, an archive's; a downloader's after
+// its readers), and how computers, applications and devices reach it from
+// outside (a CUPS server, an uploader, an S3 trigger, an inbox, a
+// downloader, a display).
 function usagePanel(n, box) {
+  const now = atSection(n);
+  if (now && n.kind !== "download") box.append(now);
   switch (n.kind) {
     case "cups":
       box.append(printerSetup(n));
@@ -1750,8 +1779,7 @@ GET ${base}/<job>
 GET ${base}/<job>/record
 GET ${base}/<job>/document
 GET ${base}/<job>/pages/<n>.png?w=`));
-      box.append(sec);
-      listedSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
+      box.append(sec, now);
       break;
     }
     case "printer":
@@ -1783,7 +1811,6 @@ GET ${base}/<job>/pages/<n>.png?w=`));
   // what a node publishes at the API, for an application's developer
   if (n.api) row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
   box.append(row);
-  if (n.kind === "sink") keptSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
   if (n.kind === "printer" && n.preview) {
     const sec = section(_("Preview"));
     box.append(sec);

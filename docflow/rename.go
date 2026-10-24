@@ -16,7 +16,8 @@ import (
 // it, a template node's templates, a display's devices, enrollment codes
 // and the slips it still shows, an inbox's items it still shows, a sink's
 // documents, a downloader's entries, and the list of the jobs sent to it.
-// An archive keeps writing to the collection it wrote to. Where the node
+// An archive keeps writing to the collection it wrote to, and the latest
+// entries it wrote go with it. Where the node
 // is reached changes with it (/ipp/print/<name>, /api/<kind>/<name>, a
 // CUPS server's /printers/<name>); the jobs that reached
 // it keep the name they had. A node with work on its way (deliveries
@@ -139,6 +140,10 @@ func (m *Manager) moveState(ctx context.Context, n *Node, to string) error {
 		return moveRecord(ctx, m.st.db, "rr."+from, "rr."+to, func(d *counterRecord, s counterRecord) { d.Next = s.Next })
 	case KindSink:
 		return moveRecord(ctx, m.st.db, from, to, func(d *sinkState, s sinkState) { d.Seq, d.Jobs = d.Seq+s.Seq+1, append(s.Jobs, d.Jobs...) })
+	case KindArchive:
+		return moveRecord(ctx, m.st.db, from, to, func(d *archiveState, s archiveState) {
+			d.Seq, d.Entries = d.Seq+s.Seq+1, append(s.Entries, d.Entries...)
+		})
 	case KindInbox:
 		var ended []string
 		if err := moveRecord(ctx, m.st.db, from, to, func(d *inboxState, s inboxState) {

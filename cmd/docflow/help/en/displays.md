@@ -38,4 +38,6 @@ The board (`/tablet`) shows the slips of the display under two tabs: **Open**, t
 - **Print here** prints the slip on the display's fallback printer, when it has one; the slip stays open.
 - The name in the bar is the worker's, written on what they do.
 
+On the topology, the display's sidebar shows the slips on its board — those of the jobs you see; every one, for the role topology —, open and the latest done or canceled, each with its state and its first page; a click shows its pages ([Looking at a document](topology.md#lightbox)).
+
 A job canceled on the Jobs pages leaves the board. A slip the fallback printed on paper — because nobody opened it in time, or no device was connected — is marked "Printed on paper" and stays open until someone marks it done.

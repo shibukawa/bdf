@@ -219,15 +219,22 @@ func (v *Viewer) is(owner string) bool {
 }
 
 // Submitted tells the job's submitter.
-func (v *Viewer) Submitted(j *Job) bool {
-	by := j.SubmittedBy
+func (v *Viewer) Submitted(j *Job) bool { return v.sent(j.SubmittedBy) }
+
+// sent tells the sender of a job, as the job names them.
+func (v *Viewer) sent(by *Principal) bool {
 	return v != nil && by != nil && by.Kind == v.Kind && by.ID != "" && by.ID == v.ID
 }
 
 // CanSee tells whether the viewer may see a job: its submitter, the
 // members of its group, the auditors and the admins.
-func (v *Viewer) CanSee(j *Job) bool {
-	return v != nil && (v.Admin || v.Can(RoleAudit) || v.Member(j.Group) || v.Submitted(j))
+func (v *Viewer) CanSee(j *Job) bool { return v.seesSent(j.SubmittedBy, j.Group) }
+
+// seesSent tells whether the viewer may see what a job sent by someone
+// of a group became, as CanSee tells of the job: what a downloader lists
+// or an archive wrote, which outlives the job.
+func (v *Viewer) seesSent(by *Principal, group string) bool {
+	return v != nil && (v.Admin || v.Can(RoleAudit) || v.Member(group) || v.sent(by))
 }
 
 // CanCancel tells whether the viewer may cancel a job: its submitter (an

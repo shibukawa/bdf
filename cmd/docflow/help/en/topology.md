@@ -19,6 +19,7 @@ The ports and the edges are colored by what flows along them ([Kinds of payload]
 The activity of the jobs you may see runs on it — yours and your groups'; an administrator sees everyone's:
 
 - a count at each node: items held in an inbox, slips open on a display, deliveries waiting at a printer or an archive, deliveries that failed, entries a downloader lists, and the jobs that reached the node in the last hour;
+- the first page of the newest document at a sink (kept), a display (a slip open on its board), an inbox (an item held) and an archive (written), of those you see;
 - dots running along the edges: the legs of the last ten minutes.
 
 Drag the background to pan, turn the wheel or pinch to zoom, and Fit brings the whole topology into view. The page polls the manager every few seconds; the badge beside the title says when the activity last changed, or that the manager is not reached.
@@ -30,7 +31,11 @@ Without the role topology, the page only looks. Click a node, and the sidebar sh
 - **Print here**, when you may send to the node ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); otherwise "You may not print here";
 - **Jobs here**: your jobs that were sent to the node or reached it, with their state, who sent them, when and their route; Document downloads one, and Reprint here sends it again to this node, as a new job of yours.
 
-A sink also shows the latest documents it kept, a downloader the entries listed there that you may read ([Downloaders](downloads.md)), and a CUPS server (source) how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).
+Under the counts, a node shows what is at it now, read again as the activity changes: a sink the latest documents it kept; a display the slips on its board that you see, open and lately done or canceled ([Display boards](displays.md#board)); an inbox what it holds, with Release and Discard when you work it ([Inboxes](inboxes.md#inboxes)); an archive the latest documents it wrote that you see; a downloader the entries listed there that you may read ([Downloaders](downloads.md)). Each document has its first page: a click shows every page ([Looking at a document](#lightbox)). A CUPS server (source) shows how a computer adds it as a printer ([CUPS server nodes](entries.md#cups)).
+
+### Looking at a document {#lightbox}
+
+A click on a document's first page, in the sidebar or on the Inboxes page, shows every page large, one under another, with Download beside its title, and of an inbox's item Release and Discard. The bar under the title zooms: − and + step out and in, the percentage is the page's width as a part of the box's, **Fit** shows each page whole in the box (as it opens) and **Width** as wide as the box. The keys +, − and 0 (Fit), Ctrl or ⌘ with the wheel, and a pinch on a trackpad or a screen zoom too, around where they point; drag a page larger than the box to move it. Zoomed in, a page is drawn again, sharper. Escape, ✕ or a click beside the box closes it.
 
 ## The editor {#editor}
 
@@ -69,9 +74,11 @@ The sidebar of a saved node has two tabs. The one chosen stays as you click from
 - of a CUPS server (source), the URL computers add the printer with, how macOS, Windows and CUPS add it, and the commands ([CUPS server nodes](entries.md#cups));
 - of a printer or a CUPS server (sink), where this system prints the jobs, over IPP (a printer also over 9100 or LPD) ([CUPS server (sink)](nodes.md#cups-out));
 - of an uploader, the request applications send and the apps allowed, and its key: Rotate key makes a new one and shows it once ([Uploaders](entries.md#uploaders)); of an S3 trigger, the request an S3 event's reference is posted with, and its key;
-- of a display, its devices, when each was last seen, and Add a device, which shows a one-time code and its QR code ([Display boards](displays.md));
+- of a display, the slips on its board, then its devices, when each was last seen, and Add a device, which shows a one-time code and its QR code ([Display boards](displays.md));
+- of an inbox, what it holds, with Release and Discard, as on the Inboxes page, then the API that applications work it with ([Inboxes](inboxes.md));
+- of an archive, the latest documents it wrote that you see, with their pages, drawn from its store;
 - of a downloader, the URLs readers fetch from, and the entries listed there ([Downloaders](downloads.md));
 - links to the jobs sent to it (Admin → Jobs), to the inbox it is (Inboxes), to the deliveries waiting at it (Admin → Deliveries), and the OpenAPI document of an uploader, an inbox or a downloader;
 - of a sink, the latest documents it kept, with their pages; of a printer with a preview, what the fake printer received ([Printer](nodes.md#printer)).
 
-The other nodes are reached along the edges alone, and their Usage has the links. Help at the top of the sidebar opens the section of the node's kind in this manual.
+What is at a node is read again as the activity changes, and what you chose in it (the nodes an item goes to) stays. The Usage tab of an inbox or a display counts what waits there: items held, slips open. The other nodes are reached along the edges alone, and their Usage has the links. Help at the top of the sidebar opens the section of the node's kind in this manual.

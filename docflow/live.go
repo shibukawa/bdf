@@ -5,13 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"slices"
 	"time"
 )
 
 // What moves in the topology, for the pages that draw it: how many items,
 // slips and deliveries are at each node, how many jobs reached it lately,
-// and the legs of the last minutes, which a canvas runs along the edges.
+// the first page of the newest document it shows, and the legs of the
+// last minutes, which a canvas runs along the edges.
 // A viewer gets the activity of the jobs they may see (CanSee): a person
 // their own and their groups', an administrator every one's.
 
@@ -45,6 +47,11 @@ type LiveNode struct {
 	Kept   int    `json:"kept,omitempty"`
 	Latest string `json:"latest,omitempty"`
 	Listed int    `json:"listed,omitempty"`
+	// Thumb is where the first page of what the node shows is drawn (a
+	// path of the API, which takes ?w=): the newest document a sink
+	// keeps, the newest slip open on a display, the newest item an inbox
+	// holds, the newest .bdf document an archive wrote.
+	Thumb string `json:"thumb,omitempty"`
 }
 
 // Flow is a job that went from one node to the next.
@@ -93,6 +100,9 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 			switch l.State {
 			case LegHeld:
 				n.Held++
+				if p := j.payload(l.Payload); n.Thumb == "" && p != nil && p.Kind == PayloadBDF && p.Pages > 0 {
+					n.Thumb = "/api/jobs/" + j.ID + "/pages/1.png?payload=" + url.QueryEscape(p.ID)
+				}
 			case LegPending:
 				n.Pending++
 			case LegFailed:
@@ -122,6 +132,7 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 					n.Kept++
 					if n.Latest == "" {
 						n.Latest = j.ID // the jobs come newest first
+						n.Thumb = "/api/jobs/" + j.ID + "/pages/1.png"
 					}
 				}
 			case LegShown:
@@ -132,11 +143,32 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 						fmt.Fprintf(h, "%s|%s\n", s.ID, s.State)
 						if !s.State.ended() {
 							n.Open++
+							if n.Thumb == "" && s.Pages > 0 {
+								n.Thumb = "/api/slips/" + url.PathEscape(s.ID) + "/pages/1.png"
+							}
 						}
 					}
 				}
 			}
 			live.Nodes[l.Node] = n
+		}
+	}
+	// an archive shows the first page of the newest .bdf document it wrote
+	// that the viewer sees
+	if archives, err := m.nodesOfKind(ctx, KindArchive); err == nil {
+		for _, a := range archives {
+			st := m.archivedState(ctx, a.Name)
+			for i := len(st.Entries) - 1; i >= 0; i-- {
+				e := st.Entries[i]
+				if e.Kind != PayloadBDF || e.Pages == 0 || !v.seesSent(e.SubmittedBy, e.Group) {
+					continue
+				}
+				n := live.Nodes[a.Name]
+				n.Thumb = "/api/nodes/" + a.Name + "/archived/" + url.PathEscape(e.Key) + "/pages/1.png"
+				live.Nodes[a.Name] = n
+				fmt.Fprintf(h, "%s|%s\n", a.Name, e.Key)
+				break
+			}
 		}
 	}
 	for name, n := range live.Nodes {

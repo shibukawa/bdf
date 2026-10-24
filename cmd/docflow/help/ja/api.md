@@ -43,7 +43,7 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | | |
 |---|---|
 | `GET /api/topology` | ノードとエッジ。`takes`、`emits`、`accepts`（いまノードに送れるもの）、`broken`（そこから出る、もうつながっていないエッジ。[壊れたエッジ](flow.md#broken)）付き。管理者には設定と数も |
-| `GET /api/topology/live` | 呼び手が見られるジョブの動き。各ノードの数と直近 10 分のレグ。ポーリング用の ETag（変化がなければ 304） |
+| `GET /api/topology/live` | 呼び手が見られるジョブの動き。各ノードの数、シンク・ディスプレイ・インボックス・アーカイブにある最新の文書の 1 ページ目（`thumb`）、直近 10 分のレグ。ポーリング用の ETag（変化がなければ 304） |
 | `GET`、`PUT /api/layout` | ノードを描く位置 |
 | `GET /api/nodes`、`GET /api/nodes/<name>` | すべてのノード。1 つのノード |
 | `PUT /api/nodes/<name>` | ノードを保存する。`kind` と種類ごとの設定（[ノードの種類](nodes.md)）。新しいアップローダー（または S3 トリガー）の応答には `key` が 1 度だけ入ります |
@@ -64,15 +64,18 @@ API は `/api` の下の JSON で、マネージャー自身のサーバーに�
 | `PUT /api/nodes/<node>/templates/<id>?name=` | アップロードする。ファイルをボディに、ファイル名を添えて |
 | `DELETE /api/nodes/<node>/templates/<id>` | 削除する |
 
-## ディスプレイ・シンク・プリンタ {#devices}
+## ディスプレイ・シンク・アーカイブ・プリンタ {#devices}
 
 | | |
 |---|---|
-| `GET /api/nodes/<display>/board` | ディスプレイの伝票 |
+| `GET /api/nodes/<display>/board` | ディスプレイの伝票。役割 topology にはすべて、ほかの人には見られるジョブのもの |
+| `GET /api/slips/<id>/pages/<p>.png?w=`、`…/document` | 伝票のページと文書。ボードがその伝票を見せる人に |
 | `GET /api/nodes/<display>/devices` | そのデバイス |
 | `POST /api/nodes/<display>/enrollments` | デバイスを登録する 1 度きりのコード。QR コードと URL 付き |
 | `DELETE /api/devices/<id>` | デバイスを外す |
 | `GET /api/nodes/<sink>/latest` | シンクが保持する最新の文書 |
+| `GET /api/nodes/<archive>/archived?limit=` | アーカイブが書いた最新の文書（最大 50 件、既定 20 件）のうち呼び手が見られるもの。新しい順 |
+| `GET /api/nodes/<archive>/archived/<key>/pages/<p>.png?w=`、`…/document` | そのページ（アーカイブのストアから描く）と文書（監査ログに残ります） |
 | `GET /api/nodes/<printer>/preview`、`…/preview/<job>/pages/<p>.png` | プリンタの偽プリンタが受け取ったものと、そのページ |
 
 ## ノードの API {#nodes}

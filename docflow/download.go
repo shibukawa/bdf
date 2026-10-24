@@ -472,13 +472,7 @@ func (h *handler) downloadViewer(w http.ResponseWriter, r *http.Request, n *Node
 
 // canSeeEntry tells whether a person sees an entry of a downloader with no
 // By: as they would the job (their own, their groups').
-func (v *Viewer) canSeeEntry(e *DownloadEntry) bool {
-	if v == nil {
-		return false
-	}
-	by := e.SubmittedBy
-	return v.Admin || v.Can(RoleAudit) || v.Member(e.Group) || by != nil && by.Kind == v.Kind && by.ID != "" && by.ID == v.ID
-}
+func (v *Viewer) canSeeEntry(e *DownloadEntry) bool { return v.seesSent(e.SubmittedBy, e.Group) }
 
 // sees tells whether the viewer may read an entry, as downloadViewer told
 // it.
