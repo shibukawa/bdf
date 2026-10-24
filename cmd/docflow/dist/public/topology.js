@@ -1472,7 +1472,7 @@ function settingsForm(n) {
       const printers = topo.filter((x) => PRINTS.has(x.kind)).map((x) => [x.name, (x.title || x.name) + (x.title ? " · " + x.name : "")]);
       form.append(field(_("Fallback printer"), selectInput("f-fallback", [["", _("none")], ...printers], n.fallback ? n.fallback.printer : ""), _("Prints the slips nobody opened in time, and every unopened slip while no device is connected. The port on the canvas sets it too.")));
       form.append(field(_("Print after"), input("f-after", n.fallback && n.fallback.after ? n.fallback.after : "", { placeholder: _("10m; empty: only while no device is connected") })));
-      form.append(field(_("Keep"), input("f-keep", n.keep || "", { placeholder: "14d" }), _("How long slips done or canceled stay on the devices.")));
+      form.append(field(_("Keep"), input("f-keep", n.keep || "", { placeholder: "14d" }), _("How long a slip stays on the devices after it came. Until then it opens again as often as asked, opened or done; then it leaves, done or not.")));
       form.append(field(_("Offline after"), input("f-offline", n.offline_after || "", { placeholder: "2m" }), _("How long a device may be silent and still count as connected.")));
       break;
     }
