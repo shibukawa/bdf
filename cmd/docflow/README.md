@@ -43,6 +43,10 @@ go run ./cmd/docflow
 with an IdP of your own in `.env.local` (copy `.env.example`; git ignores
 it). Neither needs a secret in development.
 
+`pw build` compiles it, the public tree built and embedded, to
+`bin/docflow` (`[build]` in `popcornweb.toml`: `docflow` at the root is
+the package).
+
 In development (no `APP_ENV`), it reads `config.dev.toml` at the
 repository's root (the `[oidc]` rules above, plain-http cookies), keeps its
 store in `docflow.db` and makes a random secret. Configure it with `config.{APP_ENV}.toml` (the
