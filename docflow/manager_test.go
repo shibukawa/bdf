@@ -337,6 +337,9 @@ func TestDisplay(t *testing.T) {
 		s.ClaimedUser != "wms" || s.SubmittedBy == nil || s.SubmittedBy.Kind != PrincipalAnonymous {
 		t.Fatalf("slip %+v", s)
 	}
+	if !s.Expires.Equal(s.Received.Add(14 * 24 * time.Hour)) {
+		t.Fatalf("expires %v, received %v", s.Expires, s.Received)
+	}
 
 	// its pages, as images
 	res, out := e.do(d.c, "GET", "/device/slips/"+s.ID+"/pages/2.png?w=400", "", nil)
@@ -362,6 +365,16 @@ func TestDisplay(t *testing.T) {
 		t.Fatalf("board after done %+v", b)
 	}
 	d.action(s.ID, "done", http.StatusConflict)
+
+	// done, it opens again as often as asked, until it expires
+	for range 2 {
+		if res, _ := e.do(d.c, "GET", "/device/slips/"+s.ID+"/pages/1.png", "", nil); res.StatusCode != http.StatusOK {
+			t.Fatalf("page of a done slip: %d", res.StatusCode)
+		}
+		if got := d.action(s.ID, "open", http.StatusOK); got.State != SlipDone || got.Opened == nil {
+			t.Fatalf("opened again %+v", got)
+		}
+	}
 
 	// a computer prints through a CUPS server, as to any IPP printer: it
 	// sees its job there; one it cancels leaves the board
@@ -391,6 +404,10 @@ func TestDisplay(t *testing.T) {
 	if b == nil || len(b.Open) != 0 || len(b.Ended) != 2 || b.Ended[0].State != SlipCanceled {
 		t.Fatalf("board after cancel %+v", b)
 	}
+	// the sender took it back: it is not shown again
+	if res, _ := e.do(d.c, "GET", "/device/slips/"+b.Ended[0].ID+"/pages/1.png", "", nil); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("page of a canceled slip: %d", res.StatusCode)
+	}
 	jobs, err := c.GetJobs(ctx, "completed", false, 10)
 	if err != nil || len(jobs) != 1 || jobs[0].ID != 2 || jobs[0].State != ipp.JobCanceled {
 		t.Fatalf("jobs %+v %v", jobs, err)
@@ -401,19 +418,47 @@ func TestDisplay(t *testing.T) {
 		t.Fatalf("jobs of wh-a %+v", sent)
 	}
 
-	// ended slips leave after the location keeps them
-	e.clock.add(14*24*time.Hour + time.Minute)
+	// one that came a day later is opened, not done
+	e.clock.add(24 * time.Hour)
+	d.login() // the session ended meanwhile
+	e.printJob("wh-a", "picking list 3", 1)
+	b = d.board()
+	if b == nil || len(b.Open) != 1 {
+		t.Fatalf("board with job 3 %+v", b)
+	}
+	s3 := b.Open[0]
+	d.action(s3.ID, "open", http.StatusOK)
+
+	// the slips leave when they expire, the location's keep after they
+	// came, whatever was done to them: on the board at once, and at the
+	// next tick
+	e.clock.add(13*24*time.Hour + time.Minute)
+	d.login()
+	if b = d.board(); b == nil || len(b.Open) != 1 || len(b.Ended) != 0 {
+		t.Fatalf("board once 1 and 2 expired %+v", b)
+	}
+	if res, _ := e.do(d.c, "GET", "/device/slips/"+s.ID+"/pages/1.png", "", nil); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("page of an expired slip: %d", res.StatusCode)
+	}
 	var rep TickReport
 	json.Unmarshal(e.admin("POST", "/api/tick", nil, http.StatusOK), &rep)
 	if rep.Removed != 2 {
 		t.Fatalf("tick %+v", rep)
 	}
-	d.login() // the session ended meanwhile
-	if b = d.board(); b == nil || len(b.Ended) != 0 {
-		t.Fatalf("board after keep %+v", b)
-	}
 	if _, err := e.m().Slip(context.Background(), s.ID); err == nil {
 		t.Fatal("the slip is still there")
+	}
+	if res, _ := e.do(d.c, "GET", "/device/slips/"+s3.ID+"/pages/1.png", "", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("page of slip 3: %d", res.StatusCode)
+	}
+	e.clock.add(24 * time.Hour)
+	json.Unmarshal(e.admin("POST", "/api/tick", nil, http.StatusOK), &rep)
+	if rep.Removed != 1 {
+		t.Fatalf("tick %+v", rep)
+	}
+	d.login()
+	if b = d.board(); b == nil || len(b.Open) != 0 || len(b.Ended) != 0 {
+		t.Fatalf("board after keep %+v", b)
 	}
 }
 

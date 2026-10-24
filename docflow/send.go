@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -131,8 +132,8 @@ type TickReport struct {
 	// and those that could not be.
 	Printed int `json:"printed"`
 	Failed  int `json:"failed"`
-	// Removed, Items and Jobs count the slips, the items and the jobs
-	// removed after their keep.
+	// Removed, Items and Jobs count the slips expired, and the items and
+	// the jobs removed after their keep.
 	Removed  int `json:"removed"`
 	Items    int `json:"items"`
 	Jobs     int `json:"jobs"`
@@ -144,8 +145,8 @@ type TickReport struct {
 // Tick does what is due: it sends the deliveries to printers and
 // archives that wait (or failed and are to be tried again), prints on
 // paper the slips nobody opened in time (or every unopened slip of a
-// display none of whose devices is connected), removes the slips and
-// the items ended longer ago than their display or inbox keeps them, the
+// display none of whose devices is connected), removes the slips
+// expired, the items ended longer ago than their inbox keeps them, the
 // jobs that ended and nothing shows any more, and the enrollment codes
 // expired. Any instance may call it, at any time, as often as it likes: a
 // scheduler of the platform (every minute), or a timer of the process.
@@ -224,13 +225,15 @@ func (m *Manager) tickLocation(ctx context.Context, l *Node, rep *TickReport) er
 			}
 		}
 	}
-	for _, id := range st.Ended {
+	// a slip stays until it expires, opened, done or not; one being
+	// printed waits for its print
+	for _, id := range slices.Concat(st.Open, st.Ended) {
 		s, err := m.Slip(ctx, id)
 		if errors.Is(err, ErrNotFound) {
 			s = &Slip{ID: id, Location: l.Name}
 		} else if err != nil {
 			continue
-		} else if at := endedAt(s); at.IsZero() || now.Sub(at) < l.keep() {
+		} else if now.Before(s.expiresAt(l.keep())) || (s.Lease != nil && now.Before(s.Lease.Until)) {
 			continue
 		}
 		if err := m.removeSlip(ctx, s); err != nil {
@@ -240,16 +243,6 @@ func (m *Manager) tickLocation(ctx context.Context, l *Node, rep *TickReport) er
 		rep.Removed++
 	}
 	return errors.Join(errs...)
-}
-
-func endedAt(s *Slip) time.Time {
-	switch {
-	case s.Done != nil:
-		return s.Done.At
-	case s.Canceled != nil:
-		return s.Canceled.At
-	}
-	return time.Time{}
 }
 
 // anyOnline tells whether a device was seen since a time.

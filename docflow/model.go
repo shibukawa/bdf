@@ -198,7 +198,8 @@ type Node struct {
 	Cases   []Case   `json:"cases,omitempty"`
 	Default []string `json:"default,omitempty"`
 	// Keep is how long an inbox shows its released and discarded items,
-	// and a display its slips done or canceled (default 14 days).
+	// and a display its slips after they came, opened, done or not
+	// (default 14 days).
 	Keep Duration `json:"keep,omitempty"`
 	// Store is the archive's store, a URL as OpenStore takes for documents
 	// (bbolt, s3, r2, gcs); Collection the collection (the key prefix)
@@ -747,6 +748,10 @@ type Slip struct {
 	Size     int64     `json:"size"`
 	SHA256   string    `json:"sha256"`
 	Received time.Time `json:"received"`
+	// Expires is when the slip leaves the devices, whatever was done to
+	// it: until then it opens again as often as asked (a canceled one
+	// does not). It is the display's Keep after the slip came.
+	Expires  time.Time `json:"expires,omitzero"`
 	State    SlipState `json:"state"`
 	Opened   *Mark     `json:"opened,omitempty"`
 	Done     *Mark     `json:"done,omitempty"`
@@ -790,6 +795,15 @@ type Lease struct {
 	Printer string    `json:"printer"`
 	Why     string    `json:"why"`
 	Device  string    `json:"device,omitempty"`
+}
+
+// expiresAt is when a slip leaves the devices: a slip made before slips
+// had an expiry leaves keep after it came.
+func (s *Slip) expiresAt(keep time.Duration) time.Time {
+	if !s.Expires.IsZero() {
+		return s.Expires
+	}
+	return s.Received.Add(keep)
 }
 
 // fallbackPrinted tells a slip the fallback printed already.

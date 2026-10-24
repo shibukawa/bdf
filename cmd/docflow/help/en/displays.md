@@ -4,7 +4,7 @@ A display is a node that shows jobs instead of printing them: on the devices enr
 
 ## The display {#display}
 
-A display's settings are in its sidebar on the Topology page ([Display](nodes.md#display)): its fallback printer and after how long an unopened slip is printed, how long ended slips stay on the board, and how long a device may be silent and still count as connected. While no device of the display is connected, every unopened slip is printed. A display takes `.bdf` documents only; put a convert node before it for files as received.
+A display's settings are in its sidebar on the Topology page ([Display](nodes.md#display)): its fallback printer and after how long an unopened slip is printed, how long a slip stays on the board after it came (its expiry), and how long a device may be silent and still count as connected. While no device of the display is connected, every unopened slip is printed. A display takes `.bdf` documents only; put a convert node before it for files as received.
 
 The jobs sent to a display are its group's ([Scopes of nodes](roles.md#scopes)); a display with no group of its own gives its jobs its fallback printer's group.
 
@@ -33,9 +33,11 @@ A device makes its key with WebCrypto, which a browser gives only to a page on H
 
 The board (`/tablet`) shows the slips of the display under two tabs: **Open**, the slips new and opened, and **Done and canceled**. A new slip arrives with a sound and a notice; the board polls the manager every few seconds and shows the display's title.
 
-- Tap a slip to open it: its pages, drawn large. Opening it tells the manager, so that it is not printed on paper.
-- **Done** marks the slip done; it moves to Done and canceled, and stays there for the display's keep.
+- Tap a slip to open it: its pages, drawn large. Opening it tells the manager, so that it is not printed on paper, and marks it "Opened". Opening it does not use it up: **← Board** returns to the board, and the slip opens again as often as asked.
+- **Done** marks the slip done; it moves to Done and canceled, and still opens from there.
 - **Print here** prints the slip on the display's fallback printer, when it has one; the slip stays open.
 - The name in the bar is the worker's, written on what they do.
 
-A job canceled on the Jobs pages leaves the board. A slip the fallback printed on paper — because nobody opened it in time, or no device was connected — is marked "Printed on paper" and stays open until someone marks it done.
+Every slip shows its expiry ("until …"): the display's keep (`keep`, 14 days) after it came. Until then it stays, new, opened or done; at the expiry it leaves the board, done or not, and the job's document goes when nothing else needs it.
+
+A job canceled on the Jobs pages leaves the board: its slip shows under Done and canceled, and does not open. A slip the fallback printed on paper — because nobody opened it in time, or no device was connected — is marked "Printed on paper" and stays open until someone marks it done.

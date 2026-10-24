@@ -340,8 +340,8 @@ func (m *Manager) changeSlip(ctx context.Context, id string, fn func(*Slip) erro
 }
 
 // Board is what a location's devices show: the open slips, oldest first,
-// and the ended ones still shown, latest first. Rev changes whenever any
-// of them does.
+// and the ended ones, latest first, those not expired. Rev changes
+// whenever any of them does.
 type Board struct {
 	Location string `json:"location"`
 	Title    string `json:"title"`
@@ -378,6 +378,7 @@ func (m *Manager) Board(ctx context.Context, loc string) (*Board, error) {
 		return nil, mapErr(err)
 	}
 	b.Rev = fmt.Sprintf("%d", rec.Data.Seq)
+	now, keep := m.now(), l.keep()
 	read := func(ids []string) ([]Slip, error) {
 		out := make([]Slip, 0, len(ids))
 		for _, id := range ids {
@@ -387,6 +388,9 @@ func (m *Manager) Board(ctx context.Context, loc string) (*Board, error) {
 			}
 			if err != nil {
 				return nil, err
+			}
+			if s.Expires = s.expiresAt(keep); !now.Before(s.Expires) {
+				continue // the next tick removes it
 			}
 			out = append(out, *s)
 		}
@@ -468,7 +472,7 @@ func (m *Manager) CancelSlip(ctx context.Context, id string, by Mark) (*Slip, er
 	return s, m.end(ctx, s)
 }
 
-// removeSlip deletes an ended slip; the job's document stays while
+// removeSlip deletes a slip that expired; the job's document stays while
 // something else needs it (release).
 func (m *Manager) removeSlip(ctx context.Context, s *Slip) error {
 	rec, err := m.st.db.Get[slipRecord](ctx, s.ID)

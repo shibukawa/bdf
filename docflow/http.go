@@ -858,10 +858,10 @@ func (h *handler) deviceBoard(w http.ResponseWriter, r *http.Request, d *Device)
 	writeJSON(w, http.StatusOK, b)
 }
 
-// deviceSlip is a slip of the device's display.
+// deviceSlip is a slip of the device's display, not expired.
 func (h *handler) deviceSlip(w http.ResponseWriter, r *http.Request, d *Device) *Slip {
 	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
-	if err == nil && s.Location != d.Location {
+	if err == nil && (s.Location != d.Location || (!s.Expires.IsZero() && !h.m.now().Before(s.Expires))) {
 		err = ErrNotFound
 	}
 	if err != nil {
@@ -916,9 +916,15 @@ func (h *handler) deviceAction(w http.ResponseWriter, r *http.Request, d *Device
 }
 
 // devicePage draws a page of a slip: /device/slips/{id}/pages/{n}.png?w=.
+// A slip opens again until it expires, done or not; a canceled one, whose
+// sender took it back, does not.
 func (h *handler) devicePage(w http.ResponseWriter, r *http.Request, d *Device) {
 	s := h.deviceSlip(w, r, d)
 	if s == nil {
+		return
+	}
+	if s.State == SlipCanceled {
+		h.writeErr(w, ErrNotFound)
 		return
 	}
 	n, err := strconv.Atoi(strings.TrimSuffix(r.PathValue("page"), ".png"))

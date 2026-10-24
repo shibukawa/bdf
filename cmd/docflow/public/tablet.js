@@ -153,13 +153,15 @@ function time(s) {
   return d.toLocaleString(locale, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// item is a slip on the board: any but a canceled one opens, as often as
+// asked, until it expires.
 function item(s) {
-  const active = s.state === "new" || s.state === "opened";
+  const openable = s.state !== "canceled";
   const li = document.createElement("li");
   li.className =
     "card bg-base-100 shadow-sm transition " +
     (s.state === "new" ? "border-l-8 border-warning " : "") +
-    (active ? "cursor-pointer hover:shadow-md active:scale-[0.99]" : "opacity-70");
+    (openable ? "cursor-pointer hover:shadow-md active:scale-[0.99]" : "opacity-70");
   const body = document.createElement("div");
   body.className = "card-body flex-row flex-wrap items-center gap-x-4 gap-y-1 p-5";
   const badge = document.createElement("span");
@@ -171,6 +173,7 @@ function item(s) {
   const meta = document.createElement("span");
   meta.className = "w-full text-base text-base-content/60";
   meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages === 1 ? _("{n} page", { n: 1 }) : _("{n} pages", { n: s.pages })}`;
+  if (s.expires && openable) meta.textContent += " · " + _("until {time}", { time: time(s.expires) });
   body.append(badge, name);
   if (s.printed && s.printed.length) {
     const p = document.createElement("span");
@@ -180,7 +183,7 @@ function item(s) {
   }
   body.append(meta);
   li.append(body);
-  if (active) li.addEventListener("click", () => openSlip(s));
+  if (openable) li.addEventListener("click", () => openSlip(s));
   return li;
 }
 
@@ -225,6 +228,7 @@ async function openSlip(s) {
   show("viewer");
   $("viewer-title").textContent = `${s.name || _("Document {n}", { n: s.job })} (#${s.job})`;
   $("print").hidden = !(info && info.can_print);
+  $("done").hidden = s.state === "done";
   const width = Math.min(2400, Math.round(window.innerWidth * (window.devicePixelRatio || 1)));
   const pages = [];
   for (let n = 1; n <= s.pages; n++) {
