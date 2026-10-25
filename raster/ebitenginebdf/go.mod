@@ -13,7 +13,7 @@ require (
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/molecule-man/go-brrr v1.3.0 // indirect
-	github.com/shibukawa/tinygodriver v1.3.5 // indirect
+	github.com/shibukawa/tinygodriver v1.3.6 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
