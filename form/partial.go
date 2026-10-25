@@ -3,7 +3,6 @@ package form
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/form/tag"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // OpenAll in Options.Open leaves open every name that the data does not

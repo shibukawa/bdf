@@ -1,11 +1,12 @@
 package tag
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
 	"strings"
+
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // MaxPicture bounds the bytes of a picture of the data.

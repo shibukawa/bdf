@@ -13,7 +13,6 @@ package webdoc
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"mime"
@@ -29,6 +28,7 @@ import (
 	"golang.org/x/net/html/charset"
 
 	"github.com/shibukawa/bdf/internal/xmltree"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // Namespaces of XHTML documents.
@@ -298,16 +298,16 @@ func DataURL(s string) ([]byte, error) {
 		return nil, errors.New("malformed data: URL")
 	}
 	if strings.HasSuffix(strings.ToLower(meta), ";base64") {
-		data = strings.Map(func(r rune) rune {
-			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-				return -1
-			}
-			return r
-		}, data)
+		// The decoder skips line breaks itself; spaces and tabs, which are
+		// rare, are taken out first. The images are most of a page's bytes,
+		// so the payload is not walked when there is nothing to take out.
+		if strings.IndexByte(data, ' ') >= 0 || strings.IndexByte(data, '\t') >= 0 {
+			data = strings.Map(dropBlanks, data)
+		}
 		if b, err := base64.StdEncoding.DecodeString(data); err == nil {
 			return b, nil
 		}
-		return base64.RawStdEncoding.DecodeString(strings.TrimRight(data, "="))
+		return base64.RawStdEncoding.DecodeString(strings.TrimRight(data, "=\r\n"))
 	}
 	d, err := url.PathUnescape(data)
 	return []byte(d), err
@@ -316,4 +316,12 @@ func DataURL(s string) ([]byte, error) {
 // IsDataURL reports whether a reference is a data: URL.
 func IsDataURL(s string) bool {
 	return len(s) >= 5 && strings.EqualFold(s[:5], "data:")
+}
+
+// dropBlanks drops spaces and tabs for strings.Map.
+func dropBlanks(r rune) rune {
+	if r == ' ' || r == '\t' {
+		return -1
+	}
+	return r
 }

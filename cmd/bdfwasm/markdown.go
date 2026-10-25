@@ -5,7 +5,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"path"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/klauspost/compress/flate"
 	"github.com/shibukawa/bdf/text/markdownbdf"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 func init() {

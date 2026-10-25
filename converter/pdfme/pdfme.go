@@ -27,7 +27,6 @@ package pdfme
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,6 +40,7 @@ import (
 	"github.com/shibukawa/bdf/converter/pdf"
 	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/imgconv"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // TemplateData is what a template is filled with.

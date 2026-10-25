@@ -2,7 +2,6 @@ package kicad
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/hex"
 	"image"
 	"math"
@@ -13,6 +12,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // defaultSheet is the drawing sheet KiCad puts on a page when the project
