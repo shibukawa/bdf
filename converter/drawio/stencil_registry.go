@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"embed"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/klauspost/compress/flate"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // The stencil registry (mxStencilRegistry with draw.io's dynamic loading

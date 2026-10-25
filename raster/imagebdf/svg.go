@@ -1,7 +1,6 @@
 package imagebdf
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"image"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/image/svg"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // svgImage is an SVG image part and the rasters drawn of it. The viewer
@@ -1220,15 +1220,19 @@ func dataURL(s string) ([]byte, bool) {
 		return nil, false
 	}
 	if strings.HasSuffix(meta, ";base64") {
-		payload = strings.Map(func(r rune) rune {
-			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-				return -1
-			}
-			return r
-		}, payload)
+		// The decoder skips line breaks itself; spaces and tabs, which are
+		// rare, are taken out first, without walking a payload that has none.
+		if strings.IndexByte(payload, ' ') >= 0 || strings.IndexByte(payload, '\t') >= 0 {
+			payload = strings.Map(func(r rune) rune {
+				if r == ' ' || r == '\t' {
+					return -1
+				}
+				return r
+			}, payload)
+		}
 		b, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
-			if b, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(payload, "=")); err != nil {
+			if b, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(payload, "=\r\n")); err != nil {
 				return nil, false
 			}
 		}

@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // Bounds on FLAC and Vorbis metadata: a comment block, a picture block,

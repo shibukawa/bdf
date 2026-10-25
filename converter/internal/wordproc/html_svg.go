@@ -1,12 +1,12 @@
 package wordproc
 
 import (
-	"encoding/base64"
 	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/image/imgconv"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 	"golang.org/x/net/html"
 )
 

@@ -9,7 +9,7 @@ require (
 	github.com/pdfcpu/pdfcpu v0.16.3
 	github.com/shibukawa/popcornweb v0.5.14
 	github.com/shibukawa/tinybind-go v0.5.34
-	github.com/shibukawa/tinygodriver v1.3.5
+	github.com/shibukawa/tinygodriver v1.3.6
 	github.com/shibukawa/yuruidb v0.1.0
 	github.com/yuin/goldmark v1.8.6
 	go.etcd.io/bbolt v1.5.0
@@ -56,5 +56,5 @@ require (
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.60.1 // indirect
+	modernc.org/sqlite v1.61.0 // indirect
 )

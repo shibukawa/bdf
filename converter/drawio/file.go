@@ -2,7 +2,6 @@ package drawio
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
 
 	"github.com/shibukawa/bdf/internal/xmltree"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // A draw.io file holds one or more diagrams (pages). They come as

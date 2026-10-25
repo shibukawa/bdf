@@ -2,7 +2,6 @@ package kicad
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -14,6 +13,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // Schematic defaults (KiCad's default_values.h), mm.

@@ -2,7 +2,6 @@ package epub
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -15,6 +14,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/image/imgconv"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
 	"golang.org/x/net/html"

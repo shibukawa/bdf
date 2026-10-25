@@ -16,7 +16,6 @@
 package idml
 
 import (
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -38,6 +37,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/xmp"
 	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 )
 
 // mimetype is the media type the package's mimetype part names.
@@ -930,12 +930,15 @@ func (c *converter) picture(img *ooxml.Node) *picture {
 	if contents := img.Path("Properties", "Contents"); contents != nil && (link == nil || link.AttrStr("StoredState", "") == "Embedded") {
 		text := strings.TrimSpace(contents.Content())
 		if !strings.HasPrefix(text, "<") {
-			clean := strings.Map(func(r rune) rune {
-				if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-					return -1
-				}
-				return r
-			}, text)
+			clean := text
+			if strings.ContainsAny(clean, " \n\r\t") { // hex needs it out; base64 skips line breaks itself
+				clean = strings.Map(func(r rune) rune {
+					if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+						return -1
+					}
+					return r
+				}, text)
+			}
 			if b, err := base64.StdEncoding.DecodeString(clean); err == nil && len(b) > 0 {
 				data = b
 			} else if b, err := hex.DecodeString(clean); err == nil && len(b) > 0 {

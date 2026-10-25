@@ -2,7 +2,6 @@ package drawio
 
 import (
 	"bytes"
-	"encoding/base64"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/image/imgconv"
+	base64 "github.com/shibukawa/tinygodriver/encoding/simdbase64"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
 )
@@ -83,18 +83,22 @@ func decodeDataURI(s string) ([]byte, error) {
 	}
 	meta, payload := s[5:comma], s[comma+1:]
 	if strings.HasSuffix(meta, ";base64") {
-		payload = strings.Map(func(r rune) rune {
-			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-				return -1
-			}
-			return r
-		}, payload)
+		// The decoder skips line breaks itself; spaces and tabs, which are
+		// rare, are taken out first, without walking a payload that has none.
+		if strings.IndexByte(payload, ' ') >= 0 || strings.IndexByte(payload, '\t') >= 0 {
+			payload = strings.Map(func(r rune) rune {
+				if r == ' ' || r == '\t' {
+					return -1
+				}
+				return r
+			}, payload)
+		}
 		if u, err := url.PathUnescape(payload); err == nil {
 			payload = u
 		}
 		b, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
-			b, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(payload, "="))
+			b, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(payload, "=\r\n"))
 		}
 		return b, err
 	}
