@@ -32,7 +32,7 @@ jobs:
           echo "dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a  $RUNNER_TEMP/tailwindcss" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/tailwindcss"
           PATH="$RUNNER_TEMP:$PATH" go generate ./cmd/docflow
-          go install github.com/shibukawa/popcornweb/cmd/pw@v0.5.16
+          go install github.com/shibukawa/popcornweb/cmd/pw@v0.6.0
           "$(go env GOPATH)/bin/pw" generate
           git status --porcelain -- cmd/docflow
           test -z "$(git status --porcelain -- cmd/docflow)"

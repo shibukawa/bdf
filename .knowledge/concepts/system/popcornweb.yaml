@@ -60,4 +60,6 @@ history:
     summary: 2026-10-21 pm-1 で v0.5.11 を bdf の go.mod に入れて cmd/docflow を作った。facts.in_bdf_module に分かったことを書いた（milestone:pm-1）
   v0-5-12:
     summary: 2026-10-21 利用者「popcornweb 0.5.12 がリリースされて修正が入りました。これを使ってみてください」。[assets] で cmd/docflow の下に公開の木を置き、/public で配り、pw build --target=lambda を使う形に移った。pw dev・本番の形・作り直しの決定性を確かめた
+  v0-6-0:
+    summary: 2026-10-25 利用者「popcornweb が 0.6.0 になりました。更新をおねがいします」。go.mod を v0.6.0（tinybind-go v0.6.0、tinygodriver v1.3.8 が付いてくる）、CI の pw も v0.6.0。tinybind-go v0.6.0 は net/http の実行時をルートから httpbind/ に移したので、pw generate で tinybind_openapi_pw_gen.go の import が変わる（生成し直さないと go mod tidy が「module does not contain package」で止まる）。pw build の .br は go-brrr になったが dist/public を全部消して作り直してもバイトは同じ
 

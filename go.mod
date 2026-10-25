@@ -7,9 +7,9 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/molecule-man/go-brrr v1.3.0
 	github.com/pdfcpu/pdfcpu v0.16.3
-	github.com/shibukawa/popcornweb v0.5.14
-	github.com/shibukawa/tinybind-go v0.5.34
-	github.com/shibukawa/tinygodriver v1.3.6
+	github.com/shibukawa/popcornweb v0.6.0
+	github.com/shibukawa/tinybind-go v0.6.0
+	github.com/shibukawa/tinygodriver v1.3.8
 	github.com/shibukawa/yuruidb v0.1.0
 	github.com/yuin/goldmark v1.8.6
 	go.etcd.io/bbolt v1.5.0

@@ -4,7 +4,7 @@
 
 package handlers
 
-import "github.com/shibukawa/tinybind-go"
+import "github.com/shibukawa/tinybind-go/httpbind"
 
 func init() {
 	httpbind.RegisterOpenAPIFragmentString("github.com/shibukawa/bdf/cmd/docflow/handlers", openapiFragmentJSON)
