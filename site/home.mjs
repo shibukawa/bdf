@@ -87,7 +87,51 @@ const T = {
     demoTitle: "A PDF, drawn from BDF",
     demoLead: "Converted ahead of time, as a server would. Turn its pages, select its text, search it, zoom.",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `${pdf} as a PDF, ${bdf} as BDF with its fonts. The pages are fetched by range requests as they are about to be shown.`,
+    demoNote: (pdf, bdf) => `${pdf} as a PDF of 20 pages, ${bdf} as BDF with its fonts. The pages are fetched by range requests as they are about to be shown.`,
+    backTitle: "And back out of BDF",
+    backLead: "The document above, demo.bdf, written back as a PDF file and as Markdown, and its text handed to a search index: each made inside your browser by the same Go code a server runs, built as WebAssembly. Nothing is uploaded.",
+    backTabs: "Ways out of BDF",
+    back: {
+      pdf: { tab: "PDF", about: "A PDF file of the pages, with the fonts of the document embedded: plain, or tagged with its structure for screen readers. The browser's own PDF viewer shows the result below.",
+        write: "Write the PDF", tagged: "Tagged (the structure, for screen readers)", open: "Open in a new tab", save: "Save demo-from-bdf.pdf", frame: "The PDF written from the document, in the browser's PDF viewer",
+        cli: "bdf pdf -tagged demo.bdf demo-from-bdf.pdf" },
+      md: { tab: "Markdown", about: "The document as Markdown: its headings, lists and tables, with the pictures as files in a zip beside the text, embedded in it as data URLs, or left out.",
+        write: "Write the Markdown", images: "pictures", imageOptions: { zip: "as files, in a zip", embed: "embedded in the text", none: "left out" }, copy: "Copy", save: "Save", output: "The Markdown written from the document",
+        cli: "bdf markdown demo.bdf out/" },
+      text: { tab: "Search text", about: "The text of each page with the metadata of the document, as JSON: what a server hands to a search engine (Document.SearchText), one record a page.",
+        extract: "Extract the text", shape: "show", shapes: { json: "JSON, as a server gets it", plain: "the text alone" }, copy: "Copy", save: "Save", output: "The text of the document for a search index",
+        cli: "bdf text demo.bdf demo-text.json" },
+      find: { tab: "Search with MiniSearch", about: "The same records, indexed inside your browser by MiniSearch, a JavaScript search library: one record a page, Japanese text as pairs of neighboring characters (the usual way to index it without a dictionary), every term normalized as the viewer's search normalizes it. A hit turns the pages above to where it was found, and the viewer marks the words.",
+        placeholder: "search… (try canvas, or ぶらうざ)", go: "Search", hits: "The hits",
+        code: `import MiniSearch from "minisearch";
+import { normalizeQuery } from "@bdfkit/core"; // NFKC, case and kana folded, as the viewer's search
+
+const index = new MiniSearch({
+  fields: ["text", "title"], storeFields: ["page"],
+  tokenize, // the words, and the pairs of neighboring characters of Japanese text (no dictionary needed)
+  processTerm: (term) => normalizeQuery(term) || null,
+});
+// one record a page, from bdf text (Document.SearchText on a server)
+index.addAll(text.views.flatMap((v) => v.pages.map((p) => ({ id: \`\${v.id}#\${p.page}\`, page: p.page, title: v.title, text: p.text }))));
+const hits = index.search("canvas", { prefix: true, fuzzy: 0.2 }); // each hit knows its page
+
+const CJK = /[\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Hangul}]+/gu;
+function tokenize(text) {
+  const out = [];
+  for (const word of text.normalize("NFKC").split(/[\\s\\p{P}\\p{S}]+/u)) {
+    let at = 0;
+    for (const m of word.matchAll(CJK)) {
+      if (m.index > at) out.push(word.slice(at, m.index));
+      const run = [...m[0]];
+      if (run.length === 1) out.push(run[0]);
+      for (let i = 1; i < run.length; i++) out.push(run[i - 1] + run[i]);
+      at = m.index + m[0].length;
+    }
+    if (at < word.length) out.push(word.slice(at));
+  }
+  return out;
+}` },
+    },
     benchmarkTitle: "Less time, memory and energy for document previews",
     benchmarkLead: "Compare the same Office files converted by LibreOffice + Poppler and by BDF's Go converter.",
     benchmarkEnergyTitle: "Estimated SoC energy per document",
@@ -155,7 +199,51 @@ const T = {
     demoTitle: "BDF から描いた PDF",
     demoLead: "サーバーで変換するのと同じように、あらかじめ変換してあります。ページめくり、テキストの選択、検索、拡大ができます。",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `PDF で ${pdf}、フォントを含む BDF で ${bdf}。ページは表示の直前に Range リクエストで取得します。`,
+    demoNote: (pdf, bdf) => `20 ページの PDF で ${pdf}、フォントを含む BDF で ${bdf}。ページは表示の直前に Range リクエストで取得します。`,
+    backTitle: "BDF から元に戻す",
+    backLead: "上の文書 demo.bdf を PDF ファイルと Markdown に書き戻し、テキストを検索エンジン向けに取り出します。どれも、サーバーで動くのと同じ Go のコードを WebAssembly にして、ブラウザの中で動かします。アップロードはしません。",
+    backTabs: "BDF から戻す形",
+    back: {
+      pdf: { tab: "PDF", about: "ページを PDF ファイルに書き出します。文書のフォントを埋め込み、タグ付きにすれば見出しや表の構造も残ります。できたファイルは、ブラウザ自身の PDF ビューアで下に表示します。",
+        write: "PDF を書き出す", tagged: "タグ付き（読み上げ用の構造）", open: "新しいタブで開く", save: "demo-from-bdf.pdf を保存", frame: "文書から書き出した PDF（ブラウザの PDF ビューア）",
+        cli: "bdf pdf -tagged demo.bdf demo-from-bdf.pdf" },
+      md: { tab: "Markdown", about: "文書を Markdown に書き出します。見出し・リスト・表はそのまま。図は zip にファイルとして同梱するか、データ URL で本文に埋め込むか、省きます。",
+        write: "Markdown を書き出す", images: "図", imageOptions: { zip: "ファイルにして zip に", embed: "本文に埋め込む", none: "省く" }, copy: "コピー", save: "保存", output: "文書から書き出した Markdown",
+        cli: "bdf markdown demo.bdf out/" },
+      text: { tab: "検索用テキスト", about: "ページごとのテキストと文書のメタデータを JSON に取り出します。サーバーが検索エンジンに渡すもの（Document.SearchText）で、1 ページが 1 レコードです。",
+        extract: "テキストを取り出す", shape: "表示", shapes: { json: "JSON（サーバーが受け取る形）", plain: "テキストだけ" }, copy: "コピー", save: "保存", output: "検索エンジン向けの文書のテキスト",
+        cli: "bdf text demo.bdf demo-text.json" },
+      find: { tab: "MiniSearch で検索", about: "同じレコードを、JavaScript の検索ライブラリ MiniSearch でブラウザの中に索引づけします。1 ページが 1 レコード、日本語は隣り合う 2 文字の組（バイグラム。辞書なしで索引づける常道）、語の正規化はビューアの検索と同じ（NFKC、大文字小文字、かな）。ヒットを選ぶと上の文書がそのページを開き、ビューアが語に印を付けます。",
+        placeholder: "検索…（canvas、ぶらうざ など）", go: "検索", hits: "ヒット",
+        code: `import MiniSearch from "minisearch";
+import { normalizeQuery } from "@bdfkit/core"; // ビューアの検索と同じ正規化: NFKC、大文字小文字、かな
+
+const index = new MiniSearch({
+  fields: ["text", "title"], storeFields: ["page"],
+  tokenize, // 単語と、日本語の隣り合う 2 文字の組（辞書は要らない）
+  processTerm: (term) => normalizeQuery(term) || null,
+});
+// 1 ページ 1 レコード。bdf text（サーバーでは Document.SearchText）の出力から
+index.addAll(text.views.flatMap((v) => v.pages.map((p) => ({ id: \`\${v.id}#\${p.page}\`, page: p.page, title: v.title, text: p.text }))));
+const hits = index.search("canvas", { prefix: true, fuzzy: 0.2 }); // ヒットは自分のページを知っている
+
+const CJK = /[\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Hangul}]+/gu;
+function tokenize(text) {
+  const out = [];
+  for (const word of text.normalize("NFKC").split(/[\\s\\p{P}\\p{S}]+/u)) {
+    let at = 0;
+    for (const m of word.matchAll(CJK)) {
+      if (m.index > at) out.push(word.slice(at, m.index));
+      const run = [...m[0]];
+      if (run.length === 1) out.push(run[0]);
+      for (let i = 1; i < run.length; i++) out.push(run[i - 1] + run[i]);
+      at = m.index + m[0].length;
+    }
+    if (at < word.length) out.push(word.slice(at));
+  }
+  return out;
+}` },
+    },
     benchmarkTitle: "文書変換が速く、メモリと電力も少なく",
     benchmarkLead: "同じ Office ファイルを LibreOffice + Poppler と BDF の Go 変換器で処理して比較しました。",
     benchmarkEnergyTitle: "1 文書あたりの推定 SoC エネルギー",
@@ -345,6 +433,55 @@ ${figure("benchmark-energy-title", t.benchmarkEnergyTitle, [
 </section>`;
 }
 
+/** The way back out of BDF: the document of the page as a PDF file, as Markdown and as search text, and the text searched with MiniSearch. */
+function backSection(t) {
+  const b = t.back;
+  const tab = (id, label, first) => `<button type="button" role="tab" id="tab-${id}" aria-controls="panel-${id}" aria-selected="${first}"${first ? "" : ' tabindex="-1"'}>${esc(label)}</button>`;
+  const panel = (id, first, body) => `<div class="panel" id="panel-${id}" role="tabpanel" aria-labelledby="tab-${id}"${first ? "" : " hidden"}>
+${body}
+</div>`;
+  const options = (items) => Object.entries(items).map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("");
+  return `<section class="wrap" aria-labelledby="back-title">
+<h2 id="back-title">${esc(t.backTitle)}</h2>
+<p class="lead">${esc(t.backLead)}</p>
+<div class="back">
+<div class="tabs" role="tablist" aria-label="${esc(t.backTabs)}">
+${tab("pdf", b.pdf.tab, true)}
+${tab("md", b.md.tab, false)}
+${tab("text", b.text.tab, false)}
+${tab("find", b.find.tab, false)}
+</div>
+${panel("pdf", true, `<p class="about">${esc(b.pdf.about)}</p>
+<div class="row"><button type="button" class="button primary" id="pdfWrite">${esc(b.pdf.write)}</button>
+<label><input type="checkbox" id="pdfTagged" checked> ${esc(b.pdf.tagged)}</label>
+<span class="status" id="pdfStatus" role="status"></span></div>
+<p class="links" id="pdfLinks" hidden><a class="button" id="pdfOpen" target="_blank" rel="noopener">${esc(b.pdf.open)}</a> <a class="button" id="pdfSave">${esc(b.pdf.save)}</a></p>
+<iframe id="pdfFrame" hidden title="${esc(b.pdf.frame)}"></iframe>
+<pre><code>${esc(b.pdf.cli)}</code></pre>`)}
+${panel("md", false, `<p class="about">${esc(b.md.about)}</p>
+<div class="row"><button type="button" class="button primary" id="mdWrite">${esc(b.md.write)}</button>
+<label>${esc(b.md.images)} <select id="mdImages">${options(b.md.imageOptions)}</select></label>
+<span class="status" id="mdStatus" role="status"></span></div>
+<textarea class="output" id="mdOut" readonly spellcheck="false" aria-label="${esc(b.md.output)}"></textarea>
+<p class="links" id="mdLinks" hidden><button type="button" class="button" id="mdCopy">${esc(b.md.copy)}</button> <a class="button" id="mdSave" data-label="${esc(b.md.save)}">${esc(b.md.save)}</a></p>
+<pre><code>${esc(b.md.cli)}</code></pre>`)}
+${panel("text", false, `<p class="about">${esc(b.text.about)}</p>
+<div class="row"><button type="button" class="button primary" id="textExtract">${esc(b.text.extract)}</button>
+<label>${esc(b.text.shape)} <select id="textShape">${options(b.text.shapes)}</select></label>
+<span class="status" id="textStatus" role="status"></span></div>
+<textarea class="output" id="textOut" readonly spellcheck="false" aria-label="${esc(b.text.output)}"></textarea>
+<p class="links" id="textLinks" hidden><button type="button" class="button" id="textCopy">${esc(b.text.copy)}</button> <a class="button" id="textSave" data-label="${esc(b.text.save)}">${esc(b.text.save)}</a></p>
+<pre><code>${esc(b.text.cli)}</code></pre>`)}
+${panel("find", false, `<p class="about">${esc(b.find.about)}</p>
+<div class="row" role="search"><input type="search" id="findQ" placeholder="${esc(b.find.placeholder)}" aria-label="${esc(b.find.go)}" autocomplete="off">
+<button type="button" class="button" id="findGo">${esc(b.find.go)}</button>
+<span class="status" id="findStatus" role="status"></span></div>
+<ol class="results" id="findHits" aria-label="${esc(b.find.hits)}"></ol>
+<pre><code>${esc(b.find.code)}</code></pre>`)}
+</div>
+</section>`;
+}
+
 /**
  * The top page in a language. demo gives the sizes of the PDF shown and of
  * the bdf made of it, formats how many input formats the converters take,
@@ -411,6 +548,7 @@ ${header({ lang, out, other })}
 </div>
 <p class="note">${esc(t.demoNote(size(demo.pdf), size(demo.bdf)))}</p>
 </section>
+${backSection(t)}
 ${benchmarkSection(lang, benchmark)}
 <section class="wrap" aria-labelledby="gallery-title">
 <h2 id="gallery-title">${esc(t.galleryTitle)}</h2>

@@ -125,6 +125,15 @@ for (const { name } of samples) {
   if (!name.endsWith(".pdf")) continue;
   const data = new Uint8Array(await readFile(join(site, "samples", name)));
   try {
+    // the document of the top page: twenty pages, with the links between them
+    if (name === "demo.pdf") {
+      const { bdf } = converted.find((c) => c.name === name);
+      const doc = await BdfDocument.open(new BufferSource(bdf));
+      assert.equal(doc.manifest.views[0].pages.length, 20, "the demo document has 20 pages");
+      const texts = await pageTexts(doc);
+      assert.match(texts[6], /Contents/, "page 7 is the contents");
+      assert.match(texts[11], /ブラウザ/, "page 12 is in Japanese");
+    }
     await streamed(name, data, (n) => [...Array(n).keys()]);
     await streamed(name, data, (n) => [...Array(n).keys()].reverse());
     console.log(`ok   ${name}: converted a page at a time, in order and reversed`);

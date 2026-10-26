@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>This is a PDF, drawn from BDF</title>
 <meta name="author" content="BDF">
-<meta name="description" content="The document the top page of the BDF site shows">
+<meta name="description" content="The document the top page of the BDF site shows: twenty pages on what BDF keeps of a document, and how it is drawn, searched and written back out">
 <style>
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
@@ -19,28 +19,59 @@ body { margin: 0; }
 .footer { position: absolute; left: 22mm; right: 22mm; bottom: 12mm; padding-top: 3mm; border-top: .5pt solid #b8c0c8; color: #59636e; font-size: 8.5pt; display: flex; justify-content: space-between; }
 h1 { margin: 0 0 4mm; font-size: 26pt; line-height: 1.2; color: #14432a; }
 h2 { margin: 9mm 0 3mm; font-size: 14pt; color: #14432a; }
+h2.first { margin-top: 0; }
+h3 { margin: 5mm 0 2mm; font-size: 11.5pt; color: #14432a; }
 p { margin: 0 0 3mm; }
 .lead { font-size: 12.5pt; color: #3d444d; }
 a { color: #0969da; }
 code { font-family: "Liberation Mono", monospace; font-size: .92em; background: #eef1f4; padding: 0 .25em; border-radius: 2pt; }
+pre { margin: 0 0 4mm; padding: 3mm 4mm; font-family: "Liberation Mono", monospace; font-size: 8.5pt; line-height: 1.4; background: #f3f5f7; border: .5pt solid #d1d9e0; border-radius: 3pt; white-space: pre; overflow: hidden; }
+pre code { padding: 0; background: none; font-size: inherit; }
 table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 10pt; }
 th, td { padding: 2mm 3mm; border: .5pt solid #b8c0c8; text-align: left; vertical-align: top; }
 th { background: #e6f2ec; }
+table.compact { font-size: 9pt; }
+table.compact th, table.compact td { padding: 1.2mm 2.5mm; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .note { margin: 5mm 0; padding: 3mm 4mm; border-left: 3pt solid #1d6b40; background: #f3f8f5; }
 .cols { display: flex; gap: 8mm; }
 .cols > * { flex: 1; }
+.columns { column-count: 2; column-gap: 8mm; }
+.columns p { break-inside: avoid; }
 svg { display: block; width: 100%; height: auto; }
 svg text { font-family: "Liberation Sans", sans-serif; }
-ul { margin: 0 0 3mm; padding-left: 5mm; }
+ul, ol { margin: 0 0 3mm; padding-left: 5mm; }
 li { margin-bottom: 1mm; }
+.toc { list-style: none; padding: 0; margin: 0 0 4mm; column-count: 2; column-gap: 8mm; }
+.toc li { display: flex; gap: 2mm; margin-bottom: 1.6mm; break-inside: avoid; }
+.toc li span:first-child { color: #59636e; min-width: 6mm; font-variant-numeric: tabular-nums; }
+.serif { font-family: "Liberation Serif", serif; }
+.mono { font-family: "Liberation Mono", monospace; }
+blockquote { margin: 3mm 0 4mm; padding: 2mm 5mm; border-left: 2pt solid #b8c0c8; color: #3d444d; font-family: "Liberation Serif", serif; font-size: 12pt; font-style: italic; }
+.pull { float: right; width: 48mm; margin: 1mm 0 3mm 6mm; padding: 3mm 0; border-top: 2pt solid #1d6b40; border-bottom: 2pt solid #1d6b40; color: #14432a; font-size: 13pt; font-weight: bold; line-height: 1.3; }
+.cap { color: #59636e; font-size: 8.5pt; margin-top: -2mm; }
+.invoice { margin: 0 0 5mm; padding: 5mm 6mm; border: .5pt solid #b8c0c8; }
+.invoice .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3mm; }
+.invoice .head h3 { margin: 0; font-size: 18pt; letter-spacing: .08em; }
+.invoice .kv { font-size: 9pt; color: #3d444d; }
+.invoice tfoot td { font-weight: bold; background: #f3f8f5; }
+.keys { list-style: none; padding: 0; }
+.keys li { display: flex; gap: 3mm; align-items: baseline; }
+kbd { display: inline-block; min-width: 6mm; padding: 0 1.5mm; border: .5pt solid #b8c0c8; border-bottom-width: 1.5pt; border-radius: 2pt; background: #fff; font-family: "Liberation Mono", monospace; font-size: 8.5pt; text-align: center; }
+.swatches { display: flex; gap: 3mm; margin: 2mm 0 4mm; }
+.swatches div { flex: 1; height: 12mm; border-radius: 2pt; display: flex; align-items: flex-end; padding: 1mm 2mm; color: #fff; font-size: 8pt; }
+sup, sub { font-size: .7em; line-height: 0; }
+.small { font-size: 8.5pt; color: #59636e; }
+.sizes p { margin: 0 0 1.5mm; white-space: nowrap; overflow: hidden; }
+.drop::first-letter { float: left; font-family: "Liberation Serif", serif; font-size: 34pt; line-height: .85; padding: 1mm 2mm 0 0; color: #14432a; }
 </style>
 </head>
 <body>
 
-<section class="page">
+<section class="page" id="p1">
   <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
   <h1>This is a PDF, drawn from BDF</h1>
-  <p class="lead">The pages you are reading were a PDF file. A converter written in Go turned them into BDF, and a small renderer in your browser draws them on a canvas.</p>
+  <p class="lead">The twenty pages you are reading were a PDF file. A converter written in Go turned them into BDF, and a small renderer in your browser draws them on a canvas.</p>
 
   <h2>What happened to this file</h2>
   <svg viewBox="0 0 660 150" role="img" aria-label="A PDF is converted to BDF on a server, and drawn by a worker in the browser">
@@ -70,18 +101,18 @@ li { margin-bottom: 1mm; }
       <li><b>Vector graphics.</b> Zoom in: the lines stay sharp.</li>
     </ul>
     <ul>
-      <li><b>Links.</b> Like <a href="https://github.com/shibukawa/bdf">the repository</a>, or <a href="#page=2">page 2</a>.</li>
+      <li><b>Links.</b> Like <a href="https://github.com/shibukawa/bdf">the repository</a>, or <a href="#p7">the contents on page 7</a>.</li>
       <li><b>Structure.</b> Headings, lists and tables, for screen readers.</li>
       <li><b>Metadata.</b> Title, author, dates.</li>
     </ul>
   </div>
-  <p class="note">Try the search box above the pages: look for <code>canvas</code>, or for <code>フォント</code>.</p>
-  <div class="footer"><span>BDF demo document</span><span>1 / 3</span></div>
+  <p class="note">Try the search box above the pages: look for <code>canvas</code>, or for <code>フォント</code>. Below the pages, the same document is written back as a PDF file and as Markdown, and its text is handed to a search index.</p>
+  <div class="footer"><span>BDF demo document</span><span>1 / 20</span></div>
 </section>
 
-<section class="page">
+<section class="page" id="p2">
   <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
-  <h2 style="margin-top:0">What the browser already does</h2>
+  <h2 class="first">What the browser already does</h2>
   <p>A PDF viewer written in JavaScript brings its own font rasterizer, image decoders and decompression. BDF is stored in the forms browsers take as they are, so its renderer has little left to do.</p>
   <table>
     <tr><th>What</th><th>Stored as</th><th>Drawn with</th></tr>
@@ -101,12 +132,12 @@ li { margin-bottom: 1mm; }
     <tr><td>画像</td><td>JPEG・PNG・WebP・SVG など</td><td><code>createImageBitmap</code></td></tr>
   </table>
   <p class="note" lang="ja">BDF は文書を Part に分け、内容のハッシュで格納します。どのページも使うフォントは 1 度だけ保存され、ブラウザは表示するページに要る Part だけを取得します。</p>
-  <div class="footer"><span>BDF demo document</span><span>2 / 3</span></div>
+  <div class="footer"><span>BDF demo document</span><span>2 / 20</span></div>
 </section>
 
-<section class="page">
+<section class="page" id="p3">
   <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
-  <h2 style="margin-top:0">Shapes, gradients and a chart</h2>
+  <h2 class="first">Shapes, gradients and a chart</h2>
   <p>Paths, clips, gradients and transparency are converted as they are. The chart below is vector art: its labels are text.</p>
   <svg viewBox="0 0 660 300" role="img" aria-label="A bar chart of four quarters and a line over it">
     <defs>
@@ -133,7 +164,550 @@ li { margin-bottom: 1mm; }
       <p>A sheet of a workbook is not cut into pages: it scrolls, as in a spreadsheet.</p>
     </div>
   </div>
-  <div class="footer"><span>BDF demo document</span><span>3 / 3</span></div>
+  <div class="footer"><span>BDF demo document</span><span>3 / 20</span></div>
+</section>
+
+<section class="page" id="p4">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Inside a BDF file</h2>
+  <p>A BDF document is a manifest and a set of parts. The manifest is JSON: it names the views of the document, their pages, and the parts each page is drawn from. A part is a run of bytes stored under the hash of its content, so two pages that use the same font or the same picture share one part, and a part that did not change between two versions of a document is the same part.</p>
+  <svg viewBox="0 0 660 120" role="img" aria-label="The layout of a single-file BDF: a header, the manifest, and the parts one after another, the fonts first">
+    <g font-size="11" text-anchor="middle">
+      <rect x="2" y="30" width="44" height="50" fill="#1d6b40"/><text x="24" y="59" fill="#fff" font-weight="bold">bdf</text>
+      <rect x="50" y="30" width="130" height="50" fill="#e6f2ec" stroke="#1d6b40"/><text x="115" y="52" font-weight="bold">manifest</text><text x="115" y="68" fill="#59636e">JSON: parts, off, len</text>
+      <rect x="184" y="30" width="90" height="50" fill="#fff" stroke="#59636e"/><text x="229" y="52">font</text><text x="229" y="68" fill="#59636e">WOFF2</text>
+      <rect x="278" y="30" width="90" height="50" fill="#fff" stroke="#59636e"/><text x="323" y="52">font</text><text x="323" y="68" fill="#59636e">WOFF2</text>
+      <rect x="372" y="30" width="90" height="50" fill="#fff" stroke="#59636e"/><text x="417" y="52">object</text><text x="417" y="68" fill="#59636e">page 1</text>
+      <rect x="466" y="30" width="90" height="50" fill="#fff" stroke="#59636e"/><text x="511" y="52">image</text><text x="511" y="68" fill="#59636e">JPEG</text>
+      <rect x="560" y="30" width="90" height="50" fill="#fff" stroke="#59636e"/><text x="605" y="52">object</text><text x="605" y="68" fill="#59636e">page 2</text>
+      <text x="656" y="60" fill="#59636e" font-size="16">…</text>
+      <text x="330" y="106" fill="#59636e">The manifest gives the offset and length of every part. Each is compressed on its own, so a reader fetches one with a Range request and expands it alone.</text>
+    </g>
+  </svg>
+  <h3>The kinds of parts</h3>
+  <table class="compact">
+    <tr><th>Part</th><th>Holds</th><th>Who reads it</th></tr>
+    <tr><td>manifest</td><td>The views, their pages and layers, the metadata, the tables of data</td><td>The viewer, first of all</td></tr>
+    <tr><td>object</td><td>Drawing instructions of a page or a layer: paths, text, images, groups</td><td>The renderer, page by page</td></tr>
+    <tr><td>font</td><td>A font subset to the glyphs the document uses, as WOFF2</td><td><code>FontFace</code>, once per font</td></tr>
+    <tr><td>image</td><td>A picture in the format it was in: JPEG, PNG, WebP, SVG</td><td><code>createImageBitmap</code></td></tr>
+    <tr><td>path, paint</td><td>A path or a gradient used by more than one object</td><td>The renderer, cached</td></tr>
+    <tr><td>text index</td><td>The text of a page, normalized, with the places of its characters</td><td>Search and text selection</td></tr>
+  </table>
+  <h3>Two shapes of the same document</h3>
+  <p>A <b>single file</b> starts with the manifest and keeps every part after it, the fonts and the shared objects first, then the pages in order, so that the first page can be drawn before the rest has arrived: it is what a server streams as one download, or what a browser reads with Range requests, fetching the parts of the pages in view and nothing else. The <b>split form</b> writes each part as a file of its own, named by its hash, so that the parts can sit on object storage or a CDN as they are, cached forever, since a part never changes once it is named.</p>
+  <p class="note">The hash is also the name under which the browser caches a part. Two documents that share a font fetch it once.</p>
+  <div class="footer"><span>BDF demo document</span><span>4 / 20</span></div>
+</section>
+
+<section class="page" id="p5">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Views: the shapes a document takes</h2>
+  <p>A file is not always a stack of pages. A workbook is a set of sheets that scroll in both directions; a web page is one long column; a song is a card with a player on it. Each becomes a <b>view</b> of a document, and a document may hold several: a Word file gives its pages and, beside them, the same text as one column to scroll.</p>
+  <table>
+    <tr><th>Kind</th><th>What it is</th><th>Made from</th><th>Shown as</th></tr>
+    <tr><td><code>fixed</code></td><td>Pages of a fixed size</td><td>PDF, slides, drawings, boards, scores, books</td><td>Pages that turn, or scroll</td></tr>
+    <tr><td><code>flow</code></td><td>Pages of text laid out for a paper size</td><td>Word, Markdown, HTML, EPUB</td><td>Pages, with a scroll view beside them</td></tr>
+    <tr><td><code>scroll</code></td><td>One column, as long as the text</td><td>Word, Markdown, HTML, EPUB</td><td>Scrolled, as a web page is</td></tr>
+    <tr><td><code>sheet</code></td><td>A grid of cells without page breaks</td><td>Excel, CSV, TSV, Parquet</td><td>Scrolled both ways, with frozen panes</td></tr>
+    <tr><td><code>card</code></td><td>One page that plays something</td><td>Audio files, scores</td><td>A card with a player</td></tr>
+  </table>
+  <h3>Layers and their roles</h3>
+  <p>A page is drawn from one or more layers, and each layer may say what it is: the <code>background</code> of a slide, its <code>master</code>, a running <code>header</code> or <code>footer</code>. A writer of PDF files can leave a role out, to print on paper that already has the frame; a writer of Markdown leaves the running heads out by default, since a text has no pages.</p>
+  <ul>
+    <li><b>A slide</b> is its master, its layout and its own content, three layers that the viewer flattens.</li>
+    <li><b>A sheet</b> is drawn in tiles as it is scrolled; its row and column headers, its grid and its frozen panes are described in the view, and the viewer draws them itself.</li>
+    <li><b>A board</b> of a circuit has a view for each of its layer files beside the views of its two faces, which the viewer shows as tabs.</li>
+  </ul>
+  <h3>Tabs, pages, tables</h3>
+  <p>A document with several views shows them as tabs: the sheets of a workbook, the pages of a diagram, the model space and the layouts of a drawing. A view with pages has a page number; a sheet has none, and its text goes to a search index as one entry. Beside its drawing, a document can carry <b>tables</b> of data: the cells of a sheet, the values behind a chart, written out again as CSV, JSON or Parquet.</p>
+  <div class="footer"><span>BDF demo document</span><span>5 / 20</span></div>
+</section>
+
+<section class="page" id="p6">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Text, as text</h2>
+  <p>The glyphs on a page are drawn from the fonts of the document, but the text under them is kept as characters, in reading order, with the box of each one. That is what lets you select a sentence across a line break, copy it, and find it with the search box, and what a screen reader reads out: the headings, the items of a list, the cells of a table.</p>
+  <div class="sizes">
+    <p style="font-size:22pt;font-weight:bold">Text at 22 points, bold</p>
+    <p style="font-size:16pt">Text at 16 points, regular</p>
+    <p style="font-size:12pt;font-style:italic">Text at 12 points, italic</p>
+    <p style="font-size:10.5pt" class="serif">Text at 10.5 points, in a serif face: Liberation Serif</p>
+    <p style="font-size:9pt" class="mono">Text at 9 points, monospaced: Liberation Mono</p>
+    <p style="font-size:7pt">Text at 7 points, the small print: every glyph is still a glyph, and every character is still a character.</p>
+  </div>
+  <h3>How search finds it</h3>
+  <p>The text of a page is stored as it was written. When you search, it is normalized on the way to the comparison, and so are the words you typed; both sides take the same path, so what you type finds what is written, whichever way it was written:</p>
+  <ul>
+    <li>Compatibility forms are folded (Unicode NFKC): full-width <code>ＢＤＦ</code> finds <code>BDF</code>, and <code>①</code> finds <code>1</code>.</li>
+    <li>Case is folded: <code>canvas</code> finds <code>Canvas</code> and <code>CANVAS</code>.</li>
+    <li>Katakana is folded into hiragana: <code>ふぉんと</code> finds <code>フォント</code>.</li>
+    <li>A word split by a line break, or by the end of a run, is still one word.</li>
+  </ul>
+  <h3>What the fonts keep</h3>
+  <p>A font is embedded once, subset to the glyphs the document uses, as WOFF2. This document uses Liberation Sans, Liberation Serif, Liberation Mono and IPA Gothic; the three faces of Liberation Sans in use (regular, bold and italic) are three fonts. A PDF whose fonts are already subsets takes them along as they are, repacked as WOFF2; an Office document names its fonts, and the converter lays its text out with the fonts it finds, or with free ones that stand in for them.</p>
+  <p class="note">A run of text is written with the width the converter measured it at. The renderer draws it with the browser's own text drawing and, where the browser's width differs, scales the run to the width recorded, so lines neither overflow nor drift. Where the placement of each glyph matters, as in a kerned heading, the converter writes the glyphs one at a time.</p>
+  <div class="footer"><span>BDF demo document</span><span>6 / 20</span></div>
+</section>
+
+<section class="page" id="p7">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Contents</h2>
+  <p>Links into the document itself are kept as page links: click a line to turn to its page. Links to the web open in a new tab.</p>
+  <ol class="toc">
+    <li><span>1</span><a href="#p1">This is a PDF, drawn from BDF</a></li>
+    <li><span>2</span><a href="#p2">What the browser already does</a></li>
+    <li><span>3</span><a href="#p3">Shapes, gradients and a chart</a></li>
+    <li><span>4</span><a href="#p4">Inside a BDF file</a></li>
+    <li><span>5</span><a href="#p5">Views: the shapes a document takes</a></li>
+    <li><span>6</span><a href="#p6">Text, as text</a></li>
+    <li><span>7</span><a href="#p7">Contents</a></li>
+    <li><span>8</span><a href="#p8">The formats the converters take</a></li>
+    <li><span>9</span><a href="#p9">The formats, continued; and what comes out</a></li>
+    <li><span>10</span><a href="#p10">Lines, curves and joins</a></li>
+    <li><span>11</span><a href="#p11">Transparency, gradients and clips</a></li>
+    <li><span>12</span><a href="#p12">変換の流れ</a></li>
+    <li><span>13</span><a href="#p13">On a server, in Go</a></li>
+    <li><span>14</span><a href="#p14">In the browser, in TypeScript</a></li>
+    <li><span>15</span><a href="#p15">Search: from pages to an index</a></li>
+    <li><span>16</span><a href="#p16">Forms: a filled template</a></li>
+    <li><span>17</span><a href="#p17">Typography</a></li>
+    <li><span>18</span><a href="#p18">Pages that turn, sheets that scroll</a></li>
+    <li><span>19</span><a href="#p19">Passwords, protected mode and signatures</a></li>
+    <li><span>20</span><a href="#p20">How this document was made</a></li>
+  </ol>
+  <h3>Elsewhere</h3>
+  <ul>
+    <li><a href="https://shibukawa.github.io/bdf/">The site</a>: the viewer, the forms, the thumbnails and the search text, each a page where files are converted inside the browser.</li>
+    <li><a href="https://shibukawa.github.io/bdf/docs/">The documentation</a>: getting started, the formats, the sample architectures, the specification.</li>
+    <li><a href="https://github.com/shibukawa/bdf">The repository</a>: Go packages, npm packages, and the bdf command.</li>
+  </ul>
+  <h3>How a link is kept</h3>
+  <p>A link is a rectangle on the page with a target: an address on the web, or a page of this document. The converter reads the link annotations of a PDF, the hyperlinks of a Word file or a slide, and the cross-references of a book. The viewer draws nothing for them; it lays them over the page as real links, so the keyboard reaches them and a screen reader announces them.</p>
+  <p class="note">The entry of a table of contents is a link too, when the PDF has it as one: the destinations of a PDF, named or explicit, become page links.</p>
+  <div class="footer"><span>BDF demo document</span><span>7 / 20</span></div>
+</section>
+
+<section class="page" id="p8">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">The formats the converters take</h2>
+  <p>Each format is a Go package of its own under <code>converter/</code>. A program links the ones it needs; the browser modules of the site are built the same way, one for PDF, one for Office files, one for web documents and one for images. The table runs on to the next page.</p>
+  <table class="compact">
+    <tr><th>Format</th><th>Files</th><th>What comes out</th></tr>
+    <tr><td>PDF</td><td>.pdf</td><td>Pages with their fonts, text, links, and the structure of a tagged PDF</td></tr>
+    <tr><td>Illustrator</td><td>.ai</td><td>Each artboard a page; the PDF inside the file is what is read</td></tr>
+    <tr><td>Word</td><td>.docx .docm .dotx .dotm</td><td>Pages, and one long column to scroll; vertical Japanese text too</td></tr>
+    <tr><td>PowerPoint</td><td>.pptx .pptm .ppsx .potx</td><td>Slides with their masters, charts, SmartArt and formulas</td></tr>
+    <tr><td>Excel</td><td>.xlsx .xlsm .xltx</td><td>Sheets that scroll, with frozen panes, headers and tabs; the cells as tables</td></tr>
+    <tr><td>CSV, TSV</td><td>.csv .tsv .tab</td><td>A sheet; the encoding and the delimiter are detected</td></tr>
+    <tr><td>Parquet</td><td>.parquet</td><td>A sheet of the first rows, with the schema</td></tr>
+    <tr><td>Visio</td><td>.vsdx .vsdm .vstx</td><td>Each page a page, with its shapes and connectors</td></tr>
+    <tr><td>draw.io</td><td>.drawio .dio, .png .svg exports</td><td>Pages as tabs, with the icon sets of today</td></tr>
+    <tr><td>Windows metafile</td><td>.emf .wmf</td><td>The drawing as a page</td></tr>
+    <tr><td>DXF</td><td>.dxf</td><td>Model space and the layouts, each a view</td></tr>
+    <tr><td>Jw_cad</td><td>.jww</td><td>The drawing, with its layers and its text</td></tr>
+    <tr><td>SXF</td><td>.p21 .p2z .sfc</td><td>The drawing of the Japanese public-works exchange format</td></tr>
+    <tr><td>CGM</td><td>.cgm .cgz</td><td>Binary and clear-text metafiles</td></tr>
+    <tr><td>HP-GL/2</td><td>.plt .hpgl .rtl</td><td>A plot with its pens; HP RTL raster too</td></tr>
+    <tr><td>Gerber, Excellon</td><td>.gbr .gtl .drl … .zip</td><td>The top and the bottom of a board, and a view for each layer file</td></tr>
+    <tr><td>KiCad</td><td>.kicad_sch .kicad_pcb .zip</td><td>Schematic sheets and the board, front and back</td></tr>
+  </table>
+  <p class="small">The extensions listed are the common ones; the converters look at the content of a file first and at its name second, so a file with the wrong extension still converts.</p>
+  <div class="footer"><span>BDF demo document</span><span>8 / 20</span></div>
+</section>
+
+<section class="page" id="p9">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">The formats, continued</h2>
+  <table class="compact">
+    <tr><th>Format</th><th>Files</th><th>What comes out</th></tr>
+    <tr><td>InDesign</td><td>.idml</td><td>The pages of a layout, with its text frames and its spreads</td></tr>
+    <tr><td>HTML</td><td>.html .htm .xhtml .mhtml</td><td>The article of a page in reader mode, as a column or as pages; MathML formulas</td></tr>
+    <tr><td>Markdown</td><td>.md .markdown .mdx</td><td>CommonMark and GitHub Flavored Markdown, with its tables and formulas</td></tr>
+    <tr><td>EPUB</td><td>.epub</td><td>Reflowable books as pages that turn, vertical Japanese too; fixed layouts as pictures</td></tr>
+    <tr><td>MML</td><td>.mml</td><td>Music Macro Language, engraved as a score the viewer plays</td></tr>
+    <tr><td>MIDI</td><td>.mid .midi .kar</td><td>A Standard MIDI File as a score, with the words of a karaoke file</td></tr>
+    <tr><td>MusicXML</td><td>.musicxml .mxl</td><td>A score, engraved with the glyphs of Bravura</td></tr>
+    <tr><td>Audio</td><td>.mp3 .m4a .flac .ogg .wav .aiff</td><td>A card with the cover art, the tags and the lyrics, which the viewer plays</td></tr>
+    <tr><td>Fonts</td><td>.ttf .otf .ttc .woff .woff2</td><td>A specimen: the glyphs, the features, the sizes</td></tr>
+    <tr><td>Images</td><td>.png .jpg .gif .webp .avif .bmp .svg</td><td>The image as a page, with its EXIF data</td></tr>
+    <tr><td>TIFF</td><td>.tif .tiff</td><td>Each image of the file a page</td></tr>
+    <tr><td>Photoshop</td><td>.psd .psb</td><td>The composite image, or each artboard a page</td></tr>
+  </table>
+  <h2>And what comes out</h2>
+  <p>A document is read back as easily as it is drawn. The same Go packages that a server links to convert a file write it out again in the forms a system around it asks for:</p>
+  <ul>
+    <li><b>A PDF file</b>, with the fonts of the document embedded, plain or tagged, or as PDF/A for keeping.</li>
+    <li><b>Markdown</b>, with the pictures as files beside the text, embedded in it, or left out, and the tables inline.</li>
+    <li><b>The text of each page</b> with the metadata of the document, as JSON, for a search index.</li>
+    <li><b>Thumbnails</b> drawn without a browser, by a rasterizer in pure Go: PNG, JPEG or WebP.</li>
+    <li><b>A page as SVG</b>, with its fonts beside it; or as a raster at any resolution, for printing.</li>
+    <li><b>Tables</b> the document holds beside its drawing, as CSV, JSON or Parquet.</li>
+  </ul>
+  <p class="note">The site shows three of these under the pages: this document as a PDF file, as Markdown, and as search text, each made inside your browser.</p>
+  <div class="footer"><span>BDF demo document</span><span>9 / 20</span></div>
+</section>
+
+<section class="page" id="p10">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Lines, curves and joins</h2>
+  <p>A stroke keeps its width, its caps, its joins and its dashes. The instructions below are the ones Canvas 2D has, which is why they survive the trip: a line cap in the PDF is a line cap in the file, and a line cap on the canvas.</p>
+  <svg viewBox="0 0 660 400" role="img" aria-label="A gallery of strokes: line caps, line joins, dashes, Bézier curves and polygons">
+    <g font-size="11" fill="#59636e">
+      <text x="0" y="14">Caps: butt, round, square</text>
+      <text x="340" y="14">Joins: miter, round, bevel</text>
+      <text x="0" y="124">Dashes</text>
+      <text x="340" y="124">Curves with their control points</text>
+      <text x="0" y="254">Polygons and fill rules</text>
+      <text x="340" y="254">Widths</text>
+    </g>
+    <g stroke="#1d6b40" stroke-width="14" fill="none">
+      <path d="M20 40H120" stroke-linecap="butt"/><path d="M150 40H250" stroke-linecap="round"/><path d="M20 80H120" stroke-linecap="square"/>
+    </g>
+    <g stroke="#d1d9e0" stroke-width="1"><path d="M20 30V50M120 30V50M150 30V50M250 30V50M20 70V90M120 70V90"/></g>
+    <g stroke="#0969da" stroke-width="12" fill="none">
+      <path d="M350 90L385 30L420 90" stroke-linejoin="miter"/><path d="M460 90L495 30L530 90" stroke-linejoin="round"/><path d="M570 90L605 30L640 90" stroke-linejoin="bevel"/>
+    </g>
+    <g stroke="#1f2328" stroke-width="3" fill="none">
+      <path d="M20 145H300" stroke-dasharray="12 6"/><path d="M20 165H300" stroke-dasharray="2 6" stroke-linecap="round"/><path d="M20 185H300" stroke-dasharray="20 6 4 6"/><path d="M20 205H300" stroke-dasharray="1 10" stroke-width="5" stroke-linecap="round"/>
+    </g>
+    <g fill="none" stroke-width="2.5">
+      <path d="M350 215Q420 120 495 215" stroke="#1d6b40"/>
+      <path d="M520 215C540 130 620 130 640 215" stroke="#0969da"/>
+      <path d="M350 215L420 120L495 215M520 215L540 130M620 130L640 215" stroke="#b8c0c8" stroke-width="1" stroke-dasharray="3 3"/>
+      <g fill="#fff" stroke="#59636e" stroke-width="1.5"><circle cx="420" cy="120" r="3.5"/><circle cx="540" cy="130" r="3.5"/><circle cx="620" cy="130" r="3.5"/></g>
+    </g>
+    <path d="M70 270L90 325L45 290H95L50 325z" fill="#f0a020" fill-rule="nonzero"/>
+    <path d="M170 270L190 325L145 290H195L150 325z" fill="#f0a020" fill-rule="evenodd"/>
+    <path d="M230 300l25-30 25 30 10 35h-70z" fill="#3fb27f" stroke="#14432a" stroke-width="2" stroke-linejoin="round"/>
+    <g font-size="10" fill="#59636e" text-anchor="middle"><text x="70" y="352">nonzero</text><text x="170" y="352">evenodd</text><text x="265" y="352">a pentagon</text></g>
+    <g stroke="#1f2328" fill="none">
+      <path d="M350 275H640" stroke-width=".5"/><path d="M350 290H640" stroke-width="1"/><path d="M350 307H640" stroke-width="2"/><path d="M350 328H640" stroke-width="4"/><path d="M350 355H640" stroke-width="8"/>
+    </g>
+    <g font-size="9" fill="#59636e"><text x="350" y="372">0.5, 1, 2, 4 and 8 units wide: zoom in, and they stay sharp.</text></g>
+    <circle cx="80" cy="385" r="2" fill="#59636e"/><circle cx="110" cy="385" r="4" fill="#59636e"/><circle cx="150" cy="385" r="7" fill="#59636e"/><circle cx="200" cy="385" r="11" fill="#59636e"/>
+  </svg>
+  <p class="note">The converter writes a path once and refers to it by hash when the same shape repeats: the dots of a chart, the symbols of a schematic, the pads of a board.</p>
+  <div class="footer"><span>BDF demo document</span><span>10 / 20</span></div>
+</section>
+
+<section class="page" id="p11">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Transparency, gradients and clips</h2>
+  <p>Alpha is kept per fill and per group; a group with an opacity of its own is drawn to a layer and composited, as Canvas 2D does. Gradients keep their stops, and a clip is a path like any other.</p>
+  <svg viewBox="0 0 660 330" role="img" aria-label="Three translucent circles overlapping, a sphere with a radial gradient, a bar with a gradient of many stops, and a shape clipped by text">
+    <defs>
+      <radialGradient id="ball" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#3fb27f"/><stop offset="1" stop-color="#0b3a22"/></radialGradient>
+      <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b00020"/><stop offset=".2" stop-color="#f0a020"/><stop offset=".4" stop-color="#ffd400"/><stop offset=".6" stop-color="#3fb27f"/><stop offset=".8" stop-color="#0969da"/><stop offset="1" stop-color="#6f42c1"/></linearGradient>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0969da"/><stop offset="1" stop-color="#e8f1fb"/></linearGradient>
+      <clipPath id="word"><text x="330" y="310" font-size="64" font-weight="bold" text-anchor="middle" font-family="Liberation Sans, sans-serif">CLIPPED</text></clipPath>
+    </defs>
+    <g font-size="11" fill="#59636e">
+      <text x="0" y="14">Three fills at 60% opacity</text>
+      <text x="250" y="14">A radial gradient</text>
+      <text x="420" y="14">A group at 50%, over a gradient</text>
+      <text x="0" y="200">Six stops</text>
+      <text x="0" y="262">A clip in the shape of a word</text>
+    </g>
+    <g opacity=".6"><circle cx="80" cy="90" r="50" fill="#b00020"/><circle cx="140" cy="90" r="50" fill="#0969da"/><circle cx="110" cy="140" r="50" fill="#ffd400"/></g>
+    <circle cx="320" cy="105" r="62" fill="url(#ball)"/>
+    <ellipse cx="320" cy="178" rx="48" ry="8" fill="#1f2328" opacity=".15"/>
+    <rect x="420" y="30" width="240" height="150" rx="8" fill="url(#sky)"/>
+    <g opacity=".5"><rect x="445" y="60" width="90" height="90" fill="#fff"/><circle cx="580" cy="105" r="45" fill="#ffd400"/><path d="M440 160H650" stroke="#1f2328" stroke-width="14"/></g>
+    <rect x="0" y="208" width="660" height="34" rx="6" fill="url(#rainbow)"/>
+    <g clip-path="url(#word)"><rect x="60" y="250" width="540" height="80" fill="url(#rainbow)"/><g stroke="#fff" stroke-width="3" opacity=".6"><path d="M60 262H600M60 282H600M60 302H600M60 322H600"/></g></g>
+  </svg>
+  <div class="swatches">
+    <div style="background:#1d6b40">#1d6b40</div><div style="background:#3fb27f">#3fb27f</div><div style="background:#0969da">#0969da</div><div style="background:#f0a020">#f0a020</div><div style="background:#b00020">#b00020</div><div style="background:#59636e">#59636e</div>
+  </div>
+  <p class="cap">The colors of this document, as the swatches a designer would keep. A fill is written as sRGB with an alpha; a PDF in CMYK or a spot color is converted to it.</p>
+  <p>Blend modes beyond the normal one (multiply, screen, and the others of Canvas 2D) are kept by name, and so are soft masks, as a group drawn to a layer with its alpha taken from the luminosity of another.</p>
+  <div class="footer"><span>BDF demo document</span><span>11 / 20</span></div>
+</section>
+
+<section class="page" id="p12" lang="ja">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">変換の流れ</h2>
+  <p>BDF への変換には 2 つの道があります。どちらも同じ Go のパッケージを使い、同じ Part を作り、同じレンダラが描きます。違うのは、変換がどこで走るかだけです。</p>
+  <h3>サーバーで変換する</h3>
+  <p>文書を受け取ったサーバーが変換し、BDF を 1 つのファイルとして保存します。ブラウザは Range リクエストで、表示するページの Part だけを取り寄せます。サーバーは文書を持っているあいだに、サムネイルと検索用のテキストも作れます。一度変換した文書は何度でも開けます。</p>
+  <h3>ブラウザで変換する</h3>
+  <p>同じ変換器を WebAssembly にビルドし、Web Worker の中で動かします。開いたファイルはブラウザの外に出ません。このサイトのビューアがそうしています。PDF は 1 ページずつ変換され、見えているページから順に描かれます。</p>
+  <table>
+    <tr><th>観点</th><th>サーバーで</th><th>ブラウザで</th></tr>
+    <tr><td>向いている文書</td><td>何度も開かれるもの、検索したいもの</td><td>大量に作られるが、まれにしか開かれないもの</td></tr>
+    <tr><td>必要なもの</td><td>Go のサーバー 1 つ（外部プログラムは不要）</td><td>wasm モジュールと、フォント</td></tr>
+    <tr><td>サムネイル</td><td>純粋な Go のラスタライザで描く</td><td>同じラスタライザを wasm で動かす</td></tr>
+    <tr><td>検索</td><td>ページごとのテキストを検索エンジンへ</td><td>ビューアの検索（この文書の検索ボックス）</td></tr>
+  </table>
+  <h3>何が変わらないか</h3>
+  <ul>
+    <li>描画の結果。同じ Part を同じレンダラが描くので、どちらの道でも同じ見た目になります。</li>
+    <li>テキスト。選択、コピー、検索、読み上げは、形式によらず同じように動きます。</li>
+    <li>フォント。文書が使う字だけを WOFF2 にして、一度だけ保存します。</li>
+  </ul>
+  <p class="note">「ぶらうざ」とひらがなで検索しても、このページの「ブラウザ」が見つかります。検索の前に、文書の側も入力の側も同じ正規化を通るからです。</p>
+  <div class="footer"><span>BDF demo document</span><span>12 / 20</span></div>
+</section>
+
+<section class="page" id="p13">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">On a server, in Go</h2>
+  <p>A server converts a file with one call, and keeps the document for what it needs next: the file to send to browsers, a thumbnail for a list, and the text of each page for a search engine. No office suite runs, and nothing is spawned: the converters are packages in the server's own binary.</p>
+<pre><code>import (
+	"log"
+	"os"
+
+	"github.com/shibukawa/bdf/converter"
+	_ "github.com/shibukawa/bdf/converter/all" // every format; or link only the ones you need
+	"github.com/shibukawa/bdf/thumbnail"
+)
+
+func ingest(path string) error {
+	res, err := converter.ConvertFile(path, "", &amp;converter.Options{})
+	if err != nil {
+		return err
+	}
+	log.Printf("%s: %d warning(s)", path, len(res.Warnings))
+
+	// the document as a single file: streamed whole, or read with Range requests
+	out, err := os.Create(path + ".bdf")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if err := res.Doc.WriteSingle(out); err != nil {
+		return err
+	}
+
+	// a thumbnail of the first page, drawn without a browser
+	th, err := thumbnail.Make(res.Doc, &amp;thumbnail.Options{Size: 256})
+	if err != nil {
+		return err
+	}
+	png, _ := os.Create(path + ".png")
+	defer png.Close()
+	thumbnail.Encode(png, th.Image, thumbnail.PNG)
+
+	// the text of every page, with the metadata, for the search index
+	text, err := res.Doc.SearchText()
+	if err != nil {
+		return err
+	}
+	return index(path, text) // text.Meta, text.Views[i].Pages[j].Text
+}</code></pre>
+  <p>The same three steps are the <code>bdf</code> command's <code>generate</code>, <code>thumbnail</code> and <code>text</code>. A document already converted is read back with <code>bdf.OpenSingleFile</code>, so its text can be indexed again without converting it again.</p>
+  <div class="footer"><span>BDF demo document</span><span>13 / 20</span></div>
+</section>
+
+<section class="page" id="p14">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">In the browser, in TypeScript</h2>
+  <p>The renderer is an npm package of about 23 KB gzipped. It runs in a Web Worker, which fetches the parts, draws the pages on an <code>OffscreenCanvas</code> and hands bitmaps to the page. The main thread places them, lays the text over them, and asks the worker to search.</p>
+<pre><code>import { BdfWorkerClient, buildTextLayer } from "@bdfkit/render";
+
+const client = new BdfWorkerClient(new Worker(new URL("worker.js", import.meta.url), { type: "module" }));
+
+// a single file on a server: the pages are fetched by Range requests as they are shown
+const manifest = await client.open({ kind: "single", url: "demo.bdf", range: true });
+const view = manifest.views[0];
+
+// a page as a bitmap, at the scale of the screen
+const bitmap = await client.page(view.id, 0, window.devicePixelRatio);
+canvas.getContext("2d").drawImage(bitmap, 0, 0);
+
+// its text, laid over the bitmap as real text: selection, copy, find in page, screen readers
+const content = await client.content(view.id, 0);
+pageElement.append(buildTextLayer(content, scale));
+
+// search the whole view, then the boxes of the hits, to mark them on the pages
+const hits = await client.search(view.id, "canvas", { limit: 500 });
+const boxes = await client.locate(view.id, hits);</code></pre>
+  <h3>A page at a time</h3>
+  <p>A file opened on the page goes to a second worker, the converter, built from the Go packages as WebAssembly. A PDF comes back as an outline first, every page sized, and then page by page, the pages in view first; the viewer swaps in the finished document once every page is done. An Office file comes back whole.</p>
+<pre><code>const opened = await converter.open("lib/bdf-pdf.wasm", file); // the outline: every page sized, none drawn yet
+const doc = await BdfDocument.open(new BufferSource(opened.bdf));
+for (const i of pagesInView) {
+  const page = await converter.page(opened.stream, i);           // one page, with the parts it brings
+  doc.addPage(view.id, i, await BdfDocument.open(new BufferSource(page.bdf)));
+}
+const whole = await converter.finish(opened.stream);             // the rest, and the document as one file</code></pre>
+  <p class="small">The site's viewer, forms, thumbnails and search text pages are built on these two workers and nothing else.</p>
+  <div class="footer"><span>BDF demo document</span><span>14 / 20</span></div>
+</section>
+
+<section class="page" id="p15">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Search: from pages to an index</h2>
+  <p>Search needs the text of a document, not its drawing. <code>SearchText</code> gives the metadata of the document and the text of each page, a sheet counting as one entry, and each page becomes one record of the index: an id, the file, the view, the page number, the title, the text. A hit knows its page, so a result opens the document there.</p>
+  <svg viewBox="0 0 660 190" role="img" aria-label="A document gives its text page by page; the pages go into a search index as records; a hit opens the document at its page">
+    <defs><marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#59636e"/></marker></defs>
+    <g font-size="12" text-anchor="middle">
+      <rect x="4" y="40" width="130" height="64" rx="8" fill="#1d6b40"/><text x="69" y="67" fill="#fff" font-weight="bold">document.bdf</text><text x="69" y="86" fill="#d6eadf" font-size="10">SearchText()</text>
+      <rect x="196" y="18" width="150" height="30" rx="4" fill="#fff" stroke="#59636e"/><text x="271" y="38" font-size="10" class="mono">{ page: 1, text: "…" }</text>
+      <rect x="196" y="57" width="150" height="30" rx="4" fill="#fff" stroke="#59636e"/><text x="271" y="77" font-size="10">{ page: 2, text: "…" }</text>
+      <rect x="196" y="96" width="150" height="30" rx="4" fill="#fff" stroke="#59636e"/><text x="271" y="116" font-size="10">{ page: 3, text: "…" }</text>
+      <text x="271" y="150" fill="#59636e" font-size="10">one record a page, with the title</text>
+      <rect x="408" y="40" width="120" height="64" rx="8" fill="#e6f2ec" stroke="#1d6b40" stroke-width="1.5"/><text x="468" y="67" font-weight="bold">Index</text><text x="468" y="86" fill="#59636e" font-size="10">a search engine</text>
+      <rect x="560" y="40" width="96" height="64" rx="8" fill="#fff" stroke="#59636e" stroke-width="1.5"/><text x="608" y="67" font-weight="bold">Hit</text><text x="608" y="86" fill="#59636e" font-size="10">#page=2</text>
+      <g stroke="#59636e" stroke-width="1.5" fill="none" marker-end="url(#arrow2)"><path d="M136 72H192"/><path d="M348 72H404"/><path d="M530 72H556"/></g>
+      <path d="M608 108C608 150 300 170 69 108" stroke="#0969da" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#arrow2)"/>
+      <text x="340" y="184" fill="#0969da" font-size="10">the viewer opens the document at the page of the hit</text>
+    </g>
+  </svg>
+  <h3>What goes to the engine</h3>
+  <ul>
+    <li><b>The text of a page</b>, in reading order, with its line breaks; the engine normalizes it its own way, as the viewer's search does.</li>
+    <li><b>The title</b> of the document, from its metadata (Dublin Core: title, creator, dates, language), so that a hit can be listed by name.</li>
+    <li><b>The place</b>: the file, the view and the page, so that a hit can be opened where it was found.</li>
+  </ul>
+  <h3>Two engines</h3>
+  <p>The sample architecture <i>search</i> sends the records to Meilisearch from a Go server and keeps the API key there: the browser queries the server, which proxies the query and returns the hits with a highlighted snippet. On the site, below these pages, the same records are indexed inside your browser by MiniSearch, a JavaScript library, with Japanese text as pairs of neighboring characters, the usual way to index it without a dictionary. Either way, the engine never sees the drawing, and the document is converted once.</p>
+  <p class="note">A sheet has no page number: its text is one entry, and a hit opens the sheet. A password-protected document gives its text only while the server holds the password.</p>
+  <div class="footer"><span>BDF demo document</span><span>15 / 20</span></div>
+</section>
+
+<section class="page" id="p16">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Forms: a filled template</h2>
+  <p>A form is a Word, Excel or PowerPoint file with tags in its cells and paragraphs, or a PDF with form fields. The tags say what the data looks like: a text, a number, a date, a picture, a bar code, or rows that continue onto further pages. Filled with data, the template becomes a document like this page, which was made of a table of items and a few values.</p>
+  <div class="invoice">
+    <div class="head">
+      <div><h3>INVOICE</h3><div class="kv">No. INV-2026-0042 · Issued 2026-10-26 · Due 2026-11-25</div></div>
+      <div class="kv" style="text-align:right"><b>Example Trading Co.</b><br>1-2-3 Sample Street, Suite 400<br>Sampleville 100-0001<br>billing@example.com</div>
+    </div>
+    <div class="kv" style="margin-bottom:3mm"><b>Bill to</b><br>Placeholder Industries Ltd.<br>Attn: Accounts payable</div>
+    <table class="compact">
+      <tr><th style="width:8mm" class="num">#</th><th>Item</th><th class="num" style="width:16mm">Qty</th><th class="num" style="width:24mm">Unit price</th><th class="num" style="width:26mm">Amount</th></tr>
+      <tr><td class="num">1</td><td>Document conversion, server license (annual)</td><td class="num">1</td><td class="num">1,200.00</td><td class="num">1,200.00</td></tr>
+      <tr><td class="num">2</td><td>Thumbnail service, per 10,000 documents</td><td class="num">12</td><td class="num">35.00</td><td class="num">420.00</td></tr>
+      <tr><td class="num">3</td><td>Search index export, per 10,000 pages</td><td class="num">8</td><td class="num">18.50</td><td class="num">148.00</td></tr>
+      <tr><td class="num">4</td><td>Print server, per queue</td><td class="num">3</td><td class="num">60.00</td><td class="num">180.00</td></tr>
+      <tr><td class="num">5</td><td>Support, priority (quarterly)</td><td class="num">4</td><td class="num">250.00</td><td class="num">1,000.00</td></tr>
+      <tfoot>
+        <tr><td colspan="4" style="text-align:right">Subtotal</td><td class="num">2,948.00</td></tr>
+        <tr><td colspan="4" style="text-align:right">Tax (10%)</td><td class="num">294.80</td></tr>
+        <tr><td colspan="4" style="text-align:right">Total</td><td class="num">3,242.80</td></tr>
+      </tfoot>
+    </table>
+    <div class="kv">Payment by bank transfer to the account on the attached sheet. Sample figures: this invoice is an example and bills no one.</div>
+  </div>
+  <h3>What the template said</h3>
+  <p>The items were a row of tags, <code>{{#items}}</code> … <code>{{/items}}</code>, which repeats for each item of the data and carries on to a second page when it runs out of room, with the subtotal of each page carried forward. The totals were expressions over the rows. A JSON Schema of the data is written out of the template, so that the form which collects it can be made of the schema alone.</p>
+  <p class="note">Filled forms are written as PDF files, tagged or as PDF/A, and can be signed: a signature field on a page, and a manifest digest that shows whether anything changed since.</p>
+  <div class="footer"><span>BDF demo document</span><span>16 / 20</span></div>
+</section>
+
+<section class="page" id="p17">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Typography</h2>
+  <p class="drop">Every face of a font is a font of its own in the file: the regular, the bold and the italic of Liberation Sans are three subsets, each holding the glyphs that face uses and no others. A drop capital in Liberation Serif, as at the start of this paragraph, adds a fourth, with one glyph in it. The space between letters and between lines is not a property of the text but of its position: each run of text is placed where the converter put it, at the width it measured.</p>
+  <div class="columns">
+    <p>Text set in two columns stays two columns of text. The reading order of the characters is the order of the columns, so a selection that starts in the first column and ends in the second takes the end of the one and the start of the other, as it should, and a search for a word that wraps from the bottom of a column to the top of the next still finds it.</p>
+    <p>Superscripts and subscripts are small glyphs placed higher or lower: H<sub>2</sub>O, x<sup>2</sup>, a footnote mark<sup>1</sup>. Ligatures such as fi and fl in a serif face are single glyphs that the text under them keeps as two characters, so that a search for <i>file</i> finds <i>ﬁle</i>.</p>
+    <p class="serif">A paragraph in Liberation Serif, a face with the metrics of Times New Roman. It reads differently, and it is a different subset. Its italic, <i>like this</i>, is another, and its bold, <b>like this</b>, a fourth.</p>
+    <p class="mono">Monospaced text, in Liberation Mono: the cells of a code listing line up, and a tab is as wide as the converter made it.</p>
+  </div>
+  <div class="pull">“A character stays a character, whatever glyph draws it.”</div>
+  <blockquote>The glyphs of a page are the shapes a reader sees; the characters are what the reader means. A document format for browsers keeps both, and keeps them apart.</blockquote>
+  <p>Letter-spacing, <span style="letter-spacing:.3em">like this</span>, and word-spacing are positions too. Small text, <span style="font-size:7pt">like this</span>, is drawn from the same font at a smaller size. Text in color, <span style="color:#0969da">like this</span>, and <span style="background:#ffd400">highlighted</span> text, are a fill and a rectangle behind it.</p>
+  <p class="small"><sup>1</sup> A footnote is a paragraph like any other, at the foot of the page; its mark is a link in a PDF that has one, and plain text in one that has not.</p>
+  <div class="footer"><span>BDF demo document</span><span>17 / 20</span></div>
+</section>
+
+<section class="page" id="p18">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Pages that turn, sheets that scroll</h2>
+  <p>The viewer on the site shows this document as a book: two facing pages, the first one alone like a cover, turned by the buttons, the keys, a tap, or a pull on a corner. The menu above the pages shows it one page at a time instead, or as pages to scroll through. On a phone, where two pages would be too small, it opens one at a time by itself.</p>
+  <svg viewBox="0 0 660 200" role="img" aria-label="A book open at two facing pages, with the corner of the right page curling">
+    <defs><linearGradient id="curl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#cfd6dd"/></linearGradient></defs>
+    <rect x="60" y="20" width="540" height="160" rx="4" fill="#e9ecef"/>
+    <rect x="90" y="35" width="240" height="130" fill="#fff" stroke="#b8c0c8"/>
+    <rect x="330" y="35" width="240" height="130" fill="#fff" stroke="#b8c0c8"/>
+    <path d="M330 35V165" stroke="#59636e" stroke-width="1.5"/>
+    <g stroke="#d1d9e0" stroke-width="3" stroke-linecap="round"><path d="M110 60H300M110 76H290M110 92H300M110 108H260M110 124H300M110 140H240"/><path d="M350 60H540M350 76H520M350 92H540M350 108H500M350 124H480"/></g>
+    <path d="M570 165L570 110C545 112 520 140 515 165z" fill="url(#curl)" stroke="#b8c0c8"/>
+    <path d="M570 110C545 112 520 140 515 165" fill="none" stroke="#59636e" stroke-width="1"/>
+    <g font-size="11" fill="#59636e" text-anchor="middle"><text x="210" y="190">page 18</text><text x="450" y="190">page 19 — pull the corner</text></g>
+  </svg>
+  <div class="cols">
+    <div>
+      <h3>Keys</h3>
+      <ul class="keys">
+        <li><kbd>→</kbd> <kbd>←</kbd> <span>turn the pages</span></li>
+        <li><kbd>Home</kbd> <kbd>End</kbd> <span>the first and the last</span></li>
+        <li><kbd>Ctrl</kbd>+<kbd>F</kbd> <span>search the whole document</span></li>
+        <li><kbd>Enter</kbd> <kbd>Shift</kbd>+<kbd>Enter</kbd> <span>the next and the previous match</span></li>
+        <li><kbd>Esc</kbd> <span>leave the search</span></li>
+      </ul>
+    </div>
+    <div>
+      <h3>Layouts</h3>
+      <ul>
+        <li><b>Two pages</b>: a spread, the first page alone. Pages are drawn at the size they fit.</li>
+        <li><b>One page</b>: each page as large as the stage allows.</li>
+        <li><b>Scroll</b>: the pages one above the other, as wide as the stage; each is drawn as it comes near.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>A sheet is not a page</h3>
+  <p>A workbook opens on its first sheet, with the tabs of the others. The sheet scrolls in both directions and is drawn in chunks as it is scrolled; its frozen rows and columns stay where they are. A search finds a cell and scrolls to it. The same holds for a CSV file or a Parquet file: a sheet of their rows, with the first rows of a large file and the schema of a Parquet file.</p>
+  <p class="note">The page links of this document (<a href="#p7">the contents</a>, say) turn the book to the page; in the scrolled layout they scroll to it.</p>
+  <div class="footer"><span>BDF demo document</span><span>18 / 20</span></div>
+</section>
+
+<section class="page" id="p19">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">Passwords, protected mode and signatures</h2>
+  <p>A document can be encrypted part by part with AES-256-GCM, under a content key made for that document. The key is wrapped for each reader: for a password, with a key derived from it by PBKDF2 (600,000 rounds of SHA-256); for a key pair, with ECDH. The manifest of the document is sealed too; only an outer manifest stays in the clear, naming the cipher, the key slots and the sealed parts, so that the file can be split and joined without the key. The browser unwraps the content key with WebCrypto and decrypts each part as it fetches it; a wrong password fails to unwrap the key, and the document is never read with it.</p>
+  <h3>Protected mode</h3>
+  <p>A server that must not hand the whole document to a reader can hand out <b>segments</b>: a few pages at a time, each sealed for one reader with a key agreed for that request alone, so that a segment saved from the browser opens for no one else and cannot be put back together into the document. Search runs on the server, which holds the document, and returns only the places of the hits. The viewer of the site has a mode for it, with an example server beside it.</p>
+  <table class="compact">
+    <tr><th>Mode</th><th>The browser gets</th><th>Can save</th><th>Search</th></tr>
+    <tr><td>Plain</td><td>The document, part by part or whole</td><td>The file</td><td>In the browser</td></tr>
+    <tr><td>Encrypted</td><td>The document, and decrypts it with the password</td><td>The file, still encrypted</td><td>In the browser, once opened</td></tr>
+    <tr><td>Protected</td><td>Segments of a few pages, each sealed for this reader</td><td>Nothing that opens again</td><td>On the server, by places</td></tr>
+  </table>
+  <h3>Signatures and tamper evidence</h3>
+  <p>A document can carry a digest of its manifest and of every part, signed with a key, so that a reader can tell whether anything changed since it was signed. A filled form can be signed field by field: each signature field on its page holds a picture of the signature and the signature of the values beside it, and a party that signs its half of a contract leaves the other half open for the other party. Written as a PDF file, the signatures become PDF signatures (PAdES), which other readers verify too.</p>
+  <ul>
+    <li><b>Manifest digest</b>: the hash of the manifest in its canonical form (JCS), over the hashes of the parts.</li>
+    <li><b>Value signatures</b>: the values of a form, signed with the key of the person who filled them in.</li>
+    <li><b>Seals</b>: a picture of a seal or a signature, placed in its field, drawn as part of the page.</li>
+  </ul>
+  <p class="note">A password-protected PDF or Office file is converted with its password, and the document that comes out is plain: a server that keeps it decides for itself whether to encrypt it again, and with what.</p>
+  <div class="footer"><span>BDF demo document</span><span>19 / 20</span></div>
+</section>
+
+<section class="page" id="p20">
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h2 class="first">How this document was made</h2>
+  <p>This document is an HTML file, printed to a PDF by headless Chromium with its fonts embedded, and converted into BDF by the <code>bdf</code> command when the site is built. The PDF is 20 pages of A4; the BDF holds the same pages, their text, their links and the structure of the tagged PDF, with the fonts subset to the glyphs in use.</p>
+  <table>
+    <tr><th>Step</th><th>Tool</th><th>What it makes</th></tr>
+    <tr><td>1</td><td><code>site/demo/demo.html</code></td><td>The pages, as HTML and SVG, with free fonts: Liberation and IPA</td></tr>
+    <tr><td>2</td><td>Chromium, <code>page.pdf()</code></td><td><code>demo.pdf</code>: a tagged PDF with the fonts embedded</td></tr>
+    <tr><td>3</td><td><code>bdf generate demo.pdf demo.bdf</code></td><td>The document shown on the site, as a single file</td></tr>
+    <tr><td>4</td><td>The viewer, in a worker</td><td>The pages drawn on a canvas, fetched by Range requests as they are shown</td></tr>
+    <tr><td>5</td><td><code>bdf pdf</code>, <code>bdf markdown</code>, <code>bdf text</code></td><td>Below the pages on the site: the way back out, inside the browser</td></tr>
+  </table>
+  <h3>Metadata</h3>
+  <table class="compact">
+    <tr><th>Title</th><td>This is a PDF, drawn from BDF</td></tr>
+    <tr><th>Author</th><td>BDF</td></tr>
+    <tr><th>Language</th><td>English, with pages in Japanese</td></tr>
+    <tr><th>Pages</th><td>20, A4 (210 × 297 mm)</td></tr>
+    <tr><th>Fonts</th><td>Liberation Sans, Liberation Serif, Liberation Mono (SIL Open Font License); IPAPGothic (IPA Font License)</td></tr>
+  </table>
+  <h3>What to try next</h3>
+  <ul>
+    <li>Search the document for <code>canvas</code>, <code>フォント</code>, or <code>ぶらうざ</code>, and watch the hits on the pages.</li>
+    <li>Zoom in on <a href="#p10">the strokes of page 10</a>: they are vector art, and stay sharp.</li>
+    <li>Write the document back out as a PDF, as Markdown, or as search text, under the pages on the site, and search it with MiniSearch.</li>
+    <li>Drop a file of your own on <a href="https://shibukawa.github.io/bdf/viewer/">the viewer</a>: it is converted inside your browser and never uploaded.</li>
+  </ul>
+  <p class="note">The end. <a href="#p1">Back to the first page.</a> The text of this document is MIT-licensed, with the repository.</p>
+  <div class="footer"><span>BDF demo document</span><span>20 / 20</span></div>
 </section>
 
 </body>
