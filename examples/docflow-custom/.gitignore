@@ -1,4 +1,10 @@
 /bin/
-/dist/cache/
 /docflow.db
 /.env.local
+# pw generate builds the program's public tree (dist/public, embedded by
+# public.go) and keeps its caches beside it: the tree is committed, as a
+# plain go build embeds it (the repository's .gitignore ignores every
+# dist); the rest is not.
+!/dist/
+/dist/*
+!/dist/public/
