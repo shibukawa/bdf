@@ -1,0 +1,129 @@
+id: milestone:fw-1
+type: milestone
+title: fw-1 — 独自の種類：Node.Settings と Kind.Fields、API から作るパレットとフォーム、docflow/web への移動、flowtest の公開、見本の folder
+summary: >-
+  requirement:docflow-framework の最初の段。外のモジュールが独自の種類を 1 つ足した Docflow を pw build で組め、エディタにその種類が
+  欄つきで出て、ジョブが流れる。芯に Node.Settings と Kind.Titles/Help/Group/Icon/Fields/Doc/Handler を足し、KindInfo で返す。エディタは
+  GET /api/kinds からパレット・アイコン・役割の表・設定のフォームを作る（芯の種類の専用の欄はそのまま）。cmd/docflow/handlers・
+  messages・help・public を docflow/web に移し、web.RegisterConfig・Main・Run・Options（Routes・Nav・Public・Preset は fw-2/3 で
+  埋める）を公開する。docflow/web は自分の JS・CSS を /_docflow/ で配る。docflow/internal/flowtest を docflow/flowtest に。
+  examples/docflow-custom（入れ子のモジュール）に folder の出口を書く。2026-10-26 利用者「暫定の答え（1 = A、3 = A、他も既定）のまま
+  milestone:fw-1 を実装してください」で同日に実装した（facts.implementation）。
+lifecycle: active
+authority: authored
+scope:
+  milestone: fw-1
+constraints:
+- 芯（docflow、io、render）は popcornweb を import しない
+- Node.Settings は独自の種類のもの。芯の種類と今のアダプタの平らな欄は変えない。保存済みのノードはそのまま読める
+- PutNode は Settings を Fields に照らす（型・必須・enum と catalog の値）。Check の前。400 の文に欄の鍵を出す
+- GET /api/kinds に titles・help・group・icon・fields を足す。エディタの pages.pw.html の固定のパレットと canvas.js の ICONS・ROLE_OF・PASSES_ON・MAKES_BDF・TAKES_STOCKED・PRINTS をやめる
+- 汎用のフォーム（fieldsForm）は独自の種類だけに使う。芯の種類とアダプタの専用の欄は今のまま
+- docflow/web の画面は WriteHTMLChain(w, r, nil, leaf)。資産は /_docflow/ で embed から（ETag・Cache-Control no-cache）。bdf の popcornweb.toml から [assets] を外し、cmd/docflow/dist と manifest を消す
+- cmd/docflow は web.RegisterConfig と web.Main だけ。bdf の popcornweb.toml は [generate] と [i18n].catalog を docflow/web に向け、[assets] を外す。CI の pw generate の差分の確認も docflow/web に移る。pw dev・pw build・go test ./cmd/docflow/... が今のまま通る
+- 見本 examples/docflow-custom は go.mod（replace ../..）と popcornweb.toml を持ち、CI で go build・go test・pw generate の差分なしを見る
+non_goals:
+- カタログ・接続・プリセット・YAML（fw-2）
+- 独自の画面・ナビ・ロール・help の登録（fw-3。Options の口だけ空で置く）
+- 今のアダプタの settings への移行
+- 独自の口・コレクション・定期の仕事（fw-4）
+capabilities:
+  kind-settings:
+    state: implemented
+    about: capability:docflow/kind-settings
+    evidence: {path: docflow/fields.go, locator: 'Text・FieldType・Field・Choice、checkFields・checkSettings・SettingsOf・SetSettings。model.go の Node.Settings、nodes.go の PutNode（checkSettings を Check の前に）'}
+  kind-fields-form:
+    state: implemented
+    about: capability:docflow/kind-fields-form
+    evidence: {path: docflow/web/public/topology.js, locator: 'ownKind・fieldsForm・settingsFormOf、formOf の settings、OWN_FORMS'}
+  kinds-driven-editor:
+    state: implemented
+    about: capability:docflow/kinds-driven-editor
+    evidence: {path: docflow/web/public/canvas.js, locator: 'setKinds（ROLE_OF・ICONS・OUT_PORT・EXIT・ENTRY・STOCKS・TAKES_STOCKED・PASSES_ON・PRINTS・MAKES_BDF）、DEFAULT_ICONS。topology.js の buildPalette・GROUPS、admin.js の KINDS・loadKinds・textIn。kind.go の KindInfo（titles・help・group・icon・picks・prints・fields）'}
+  web-package:
+    state: implemented
+    about: capability:docflow/web-package
+    evidence: {path: docflow/web/main.go, locator: 'Options（Public・Routes・AssetsDir）、Main、Run。app.go の Open(ctx, cfg, oidc, o)・Manager・Viewer。cmd/docflow/main.go は RegisterConfig と Main だけ'}
+  self-served-assets:
+    state: implemented
+    about: capability:docflow/self-served-assets
+    evidence: {path: docflow/web/assets.go, locator: 'AssetsPath /_docflow、embed public、assets.ServeHTTP（ETag・no-cache）、newAssets(dir)'}
+  flowtest-public:
+    state: implemented
+    about: capability:docflow/flowtest-public
+    evidence: {path: docflow/flowtest/flowtest.go, locator: 'internal から出した。Env.Required が settings の欄も外して確かめる'}
+  example-app:
+    state: implemented
+    about: capability:docflow/example-app
+    evidence: {path: examples/docflow-custom/kinds/folder/folder.go, locator: 'Kind folder（Fields dir・path・overwrite、Doc、Check、Send）。main.go・popcornweb.toml・go.mod（replace ../..）'}
+acceptance:
+  f1-build:
+    text: examples/docflow-custom で pw build（と go build）が通り、1 つのバイナリができる。cmd/docflow も今のまま通る
+    verified_by: [example-build]
+  f2-palette:
+    text: 見本のバイナリの /topology で、パレットに folder が自分の題・説明・アイコンで出る（役割 exit の見出し sink の下、Group で上書きできる）
+    verified_by: [editor-browser]
+  f3-form:
+    text: folder を置くとサイドバーに Fields の欄（dir・path・overwrite）が型どおりの部品で出て、必須の dir を空のまま離れると警告色、Add で PUT され settings に入る
+    verified_by: [editor-browser, framework-tests]
+  f4-flow:
+    text: upload → folder のトポロジーにファイルを送ると、ディレクトリに path の名前で書かれ、ジョブは completed
+    verified_by: [example-tests]
+  f5-validation:
+    text: settings の型違い・必須の欠け・enum の外の値は PUT で 400 になり、文に欄の鍵が出る。登録の無い種類は今のまま 400
+    verified_by: [framework-tests]
+  f6-kinds-api:
+    text: GET /api/kinds が芯の種類についても titles・icon・group を返し、エディタが固定の表なしで今と同じ絵（アイコン・色・パレット）を描く
+    verified_by: [framework-tests, editor-browser]
+  f7-assets:
+    text: /_docflow/app.css と /_docflow/topology.js が ETag つきで配られ、pw の /public は空のアプリ（cmd/docflow）でも動く
+    verified_by: [handlers-tests]
+  f8-flowtest:
+    text: 見本の go test が docflow/flowtest で folder の Send と Required を確かめる
+    verified_by: [example-tests]
+verification:
+  example-build:
+    state: passed
+    authority: observed
+    evidence: {path: examples/docflow-custom/popcornweb.toml, locator: '2026-10-26 macOS。pw 0.5.16（CI と同じ版を scratch に入れた。手元の pw 0.6.0 は 0.6.0 の実行系向けに生成するので使わない）で bin/docflow（38 MB）と examples/docflow-custom/bin/docflow-custom（38 MB）'}
+    method: integration
+    test: cd examples/docflow-custom && pw build && go build ./... ; go build ./cmd/docflow
+  editor-browser:
+    state: passed
+    authority: observed
+    evidence: {path: docflow/web/public/topology.js, locator: '2026-10-26 内蔵ブラウザ、examples/docflow-custom の pw dev（Ada Admin、日本語）：パレットが API の種類で 4 つの見出し、フォルダがシンクの末尾にアイコンつき。置くとディレクトリ・パス・上書きの欄、ディレクトリを空のまま離れると琥珀と「必須です」とキャンバスのバッジ 1、入れて Enter で保存、GET /api/nodes/out の settings に dir と overwrite=false。凡例にもフォルダ'}
+    method: manual
+    test: pw dev（見本）の /topology で、パレットの folder、欄、必須の印、Add、ジョブの流れを内蔵ブラウザで見る
+  framework-tests:
+    state: passed
+    authority: observed
+    evidence: {path: docflow/fields_test.go, locator: '2026-10-26 go test ./docflow/ ./docflow/io/... ./docflow/render/ ./docflow/flowtest/（fields_test.go：TestKindSettings・TestKindInfos・TestKindHandler・TestRegisterKindChecks）'}
+    method: integration
+    test: go test ./docflow/... ./docflow/web/...（TestKindFields、TestSettingsValidation、TestKindInfos）
+  example-tests:
+    state: passed
+    authority: observed
+    evidence: {path: examples/docflow-custom/kinds/folder/folder_test.go, locator: '2026-10-26 cd examples/docflow-custom && go test ./...（TestFolder：書く、既定のパス、.. が逃げない、上書きの有無。TestFolderSettings：Required、相対・無いディレクトリ、KindInfos）'}
+    method: integration
+    test: cd examples/docflow-custom && go test ./...
+  handlers-tests:
+    state: passed
+    authority: observed
+    evidence: {path: docflow/web/assets_test.go, locator: '2026-10-26 go test ./docflow/web/（TestAssets、TestScriptTexts、ログインとページの試験はそのまま）'}
+    method: integration
+    test: go test ./docflow/web/...（資産の配信、ページの描画）
+facts:
+  implementation:
+    date: '2026-10-26'
+    core: 'docflow/fields.go（Text・Field・FieldType・Choice、checkSettings・SettingsOf・SetSettings）、kind.go（Kind の Titles・Help・Group・Icon・Doc・Picks・Fields・Handler・Access、KindInfo の拡張、GroupSource …、AccessTopology …、required()・prints()・group()）、model.go（Node.Settings）、nodes.go（checkSettings を Check の前に）、http.go（Kind.Handler を /api/<kind>/{name}/ に、Access で門）、kinds_core.go と io/*・render（Titles・Help・Icon・Picks）'
+    web: 'cmd/docflow/handlers・help・public・tailwind → docflow/web（package web）、messages → docflow/webmessages（docflow/web の下だと pw が生成物を掃くため）。DocflowConfig → Config。main.go（Options・Main・Run）、assets.go（/_docflow/）、app.go（Open に Options、Manager・Viewer、Routes）、auth.go の publicPaths。pages.pw.html の固定のパレットを空の ul に、pages.yaml の kind-*・palette-* を削除。help.go の withKindDocs（Kind.Doc を /help/nodes の末尾に）、help.Appended'
+    editor: 'canvas.js の表を setKinds で API から、DEFAULT_ICONS。admin.js の KINDS を loadKinds で。topology.js の buildPalette・ownKind・fieldsForm・settingsFormOf。jobs.js・admin-jobs.js も loadKinds。ja.js の種類名の文を消し、4 つ足した'
+    reference_app: 'cmd/docflow は RegisterConfig と Main(Options{Public: publicTree()})。pw 0.5.16 は public.go を求めるので、空の public の木（public/.gitkeep、dist/public/.keep、manifest）を持つ。popcornweb.toml の [generate] と [i18n].catalog を移し、[assets] は cmd/docflow の空の木'
+    example: 'examples/docflow-custom：go.mod（replace ../..）、popcornweb.toml（generate は空、assets は public）、main.go、public.go、kinds/folder、config.dev.toml、devidp.toml、README。CI に go vet・go test・pw build の段'
+    ci: 'ci.yml：go generate ./docflow/web、pw generate、差分は docflow/web と cmd/docflow。examples/docflow-custom の段。pw generate は examples/docflow-custom/public_manifest_pw_gen.go を「purpose の外」と警告する（入れ子のモジュールを歩く。失敗ではない）'
+    not_in_fw1: 'Field の catalog・Open（fw-2）、Kind.Pick・独自の口（fw-4）、Options.Routes の先の Page・API・Nav（fw-3。Routes の口と App.Manager・Viewer だけ）'
+relations:
+- relation: refines
+  to: requirement:docflow-framework
+- relation: builds_on
+  to: milestone:df-1

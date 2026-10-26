@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/docflow"
-	"github.com/shibukawa/bdf/docflow/internal/flowtest"
+	"github.com/shibukawa/bdf/docflow/flowtest"
 	dipp "github.com/shibukawa/bdf/docflow/io/ipp"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/printconv"

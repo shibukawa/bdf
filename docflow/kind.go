@@ -110,12 +110,112 @@ type Kind struct {
 	// far side that does not answer is ErrPrint.
 	Discover func(ctx context.Context, m *Manager, in Node) (any, error)
 
+	// What the editor and the manual show of the kind, and the settings
+	// of a kind of its own (fields.go). Titles is the kind as it is said,
+	// by language (Title is its English, for a kind that sets that
+	// alone); Help what it does, in a line, under its name in the
+	// palette. Group is the heading of the palette it is under: source,
+	// control, convert or sink by its role, or one of the kind's own.
+	// Icon is drawn on the node: the paths of a 24 by 24 drawing, stroked
+	// (as the editor's own are); none, the role's. Doc is the kind's
+	// chapter of the manual (Markdown), shown at /help/nodes. Picks tells
+	// a router that sends on by rules or checks (a filter, an assert, a
+	// branch), which the editor colors apart from one that forwards.
+	Titles Text
+	Help   Text
+	Group  string
+	Icon   []string
+	Doc    Text
+	Picks  bool
+	// Fields are the settings of a kind of its own (Node.Settings): the
+	// editor makes a form of them, and PutNode checks a node's settings
+	// against them before Check sees them. A kind of the core and the
+	// adapters has none: its settings are the fields of Node.
+	Fields []Field
+	// Handler serves the kind's own API, at /api/<kind>/<name>/… of every
+	// node of the kind (the name is the request's PathValue "name"), to
+	// whoever Access lets: the role topology by default.
+	Handler func(m *Manager) http.Handler
+	Access  string
+
 	// route takes a job that reaches a node of a core kind; a kind with
 	// none sends to an exit (Send), or forwards along To.
 	route func(m *Manager, ctx context.Context, r *routing, name, from string, depth int)
 }
 
-func (k *Kind) title() string { return or(k.Title, k.Name) }
+// title is the kind as it is said, in English.
+func (k *Kind) title() string {
+	if k.Title != "" {
+		return k.Title
+	}
+	if s := k.Titles.In("en"); s != "" {
+		return s
+	}
+	return k.Name
+}
+
+// titles are the kind's names by language, with its English at least.
+func (k *Kind) titles() Text {
+	out := Text{}
+	for lang, s := range k.Titles {
+		out[lang] = s
+	}
+	if out["en"] == "" {
+		out["en"] = k.title()
+	}
+	return out
+}
+
+// group is the heading of the palette the kind is under.
+func (k *Kind) group() string {
+	if k.Group != "" {
+		return k.Group
+	}
+	switch k.Role {
+	case RoleEntry:
+		return GroupSource
+	case RoleRoute:
+		return GroupControl
+	case RoleStep:
+		return GroupConvert
+	}
+	return GroupSink
+}
+
+// required are the settings a node of the kind must have: Required, and
+// the fields of its own that are required.
+func (k *Kind) required() []Required {
+	out := slices.Clone(k.Required)
+	for _, f := range k.Fields {
+		if f.Required {
+			out = append(out, Required{Key: f.Key, If: f.If})
+		}
+	}
+	return out
+}
+
+// prints tells a kind a display's fallback prints on: an exit that sends
+// .bdf documents out (a printer, a CUPS server's queue).
+func (k *Kind) prints() bool { return k.Send != nil && k.takes().has(PayloadBDF) }
+
+// The headings of the editor's palette, by role (Kind.Group).
+const (
+	GroupSource  = "source"
+	GroupControl = "control"
+	GroupConvert = "convert"
+	GroupSink    = "sink"
+)
+
+// Who a kind's own API (Kind.Handler) answers (Kind.Access).
+const (
+	// AccessTopology is the role topology (the admin token, an app with
+	// the scope admin, a person with the role): the default.
+	AccessTopology = ""
+	// AccessViewer is anyone signed in, or with a token.
+	AccessViewer = "viewer"
+	// AccessPublic is anyone: the handler checks for itself.
+	AccessPublic = "public"
+)
 
 // takes is the set of the payload kinds its input takes.
 func (k *Kind) takes() kinds {
@@ -143,6 +243,14 @@ func RegisterKind(k Kind) {
 	}
 	if k.Makes != "" && kindBit(k.Makes) == 0 {
 		panic(fmt.Sprintf("docflow: kind %s makes %q", k.Name, k.Makes))
+	}
+	if err := checkFields(k.Fields); err != nil {
+		panic("docflow: kind " + k.Name + ": " + err.Error())
+	}
+	switch k.Access {
+	case AccessTopology, AccessViewer, AccessPublic:
+	default:
+		panic(fmt.Sprintf("docflow: kind %s: access %q", k.Name, k.Access))
 	}
 	registry.Lock()
 	defer registry.Unlock()
@@ -531,8 +639,20 @@ type KindInfo struct {
 	// Discovers tells a kind whose far side is asked what is there
 	// (Kind.Discover).
 	Discovers bool `json:"discovers,omitempty"`
-	// Required are Kind.Required.
+	// Required are Kind.Required, and the fields of the kind's own that
+	// are required.
 	Required []Required `json:"required,omitempty"`
+	// Titles and Help are the kind's name and what it does, by language;
+	// Group the heading of the palette it is under; Icon its drawing;
+	// Picks a router that picks by rules; Prints an exit a display's
+	// fallback prints on; Fields the settings of a kind of its own.
+	Titles Text     `json:"titles"`
+	Help   Text     `json:"help,omitempty"`
+	Group  string   `json:"group"`
+	Icon   []string `json:"icon,omitempty"`
+	Picks  bool     `json:"picks,omitempty"`
+	Prints bool     `json:"prints,omitempty"`
+	Fields []Field  `json:"fields,omitempty"`
 }
 
 // Required is a setting a node must have: the JSON key of a field of
@@ -549,7 +669,8 @@ func KindInfos() []KindInfo {
 	out := make([]KindInfo, 0, len(ks))
 	for _, k := range ks {
 		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Stocks: k.Stocks, Makes: k.Makes, Fixed: k.Fixed,
-			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name), Discovers: k.Discover != nil, Required: k.Required})
+			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name), Discovers: k.Discover != nil, Required: k.required(),
+			Titles: k.titles(), Help: k.Help, Group: k.group(), Icon: k.Icon, Picks: k.Picks, Prints: k.prints(), Fields: k.Fields})
 	}
 	return out
 }

@@ -1,0 +1,275 @@
+id: requirement:docflow-framework
+type: requirement
+title: Docflow をフレームワークにする — static import で独自の種類・設定・カタログ（pulldown）・プリセットのトポロジー・独自の画面を足した 1 つのバイナリを組む
+summary: >-
+  2026-10-26 利用者「docflow はひととおりできた。docflow をベースに、static import でちょっとアレンジして独自ノードを追加するなどして、
+  アレンジできるようなフレームワーク化をしたい。また、popcornweb ベースなので、構造体を登録するだけで設定は自由に足せるはず。
+  S3 の接続先のような設定も、そこで定義した設定をプルダウンで選べたりする、トポロジーもプリセットのを組み込んでスタンドアロンアプリと
+  できる、独自管理画面やユーザー向け画面を足せる、みたいなことが実現できると良いと思う」。Go のモジュールが bdf を import し、init の
+  登録と main の数行で 1 つのバイナリを pw build で作る形。叙述は knowledge-inputs/print-plan/docflow-framework.ja.md。
+  拡張点は 5 つ：種類（Node.Settings と Kind.Fields、API から作るパレットとフォーム）、設定（pw.RegisterConfig のまま）、カタログ
+  （設定からの pulldown：connections・credentials）、プリセット（seed・managed・locked と YAML の出し入れ）、画面（Shell/AppBar の
+  export、Page/API、ナビとロールの登録、自前の資産の配信）。設計は Claude の暫定（open_questions）。
+lifecycle: active
+authority: authored
+aliases:
+- Docflow framework
+- docflow フレームワーク
+- フレームワーク化
+- static import
+- 独自ノード
+- custom node kind
+- custom kind
+- Node.Settings
+- Kind.Fields
+- カタログ
+- catalog
+- connections
+- 接続先
+- pulldown
+- プルダウン
+- プリセット
+- preset topology
+- standalone app
+- スタンドアロン
+- 独自管理画面
+- custom pages
+- docflow/web
+- RegisterNav
+- RegisterRole
+- RegisterCatalog
+- flowtest
+constraints:
+- 組み立ては Go の static import と init の登録だけ。動的なプラグイン・Wasm・別プロセスの種類は作らない（別プロセスの変換は requirement:document-flow の外部サービスのまま）
+- 芯（docflow、docflow/io/...、docflow/render）は popcornweb を import しない（2026-10-26 に go list -deps で 0 を確かめた）。popcornweb に触るのは docflow/web とアプリの側
+- 独自の種類の設定は Node.Settings（その種類だけのオブジェクト）。芯の種類と今のアダプタの平らな欄は当面そのまま（df-1 の利用者の答えを覆さない。移すかは open_questions.adapters-to-settings）
+- 独自の種類の次のノードは芯の欄 to・on_error で指す。独自の口（branch の case のような）は fw-4 まで無い
+- エディタは GET /api/kinds だけで種類を知る（パレット・アイコン・役割の表・フォームの欄）。pages.pw.html と canvas.js の固定の表はやめる
+- PutNode は Settings を Kind.Fields に照らして形（型・必須・カタログの値）を確かめ、それから Check。確かめの本元はサーバー（requirement:docflow-node-editing と同じ）
+- アプリの [i18n] は docflow/web と同じ locales・default_locale（en, ja / en）と cookie_routes ["/"] を宣言する（pwruntime.RegisterLocales は違う集合で panic。2026-10-26 に確かめた）
+- docflow/web の画面は WriteHTMLChain(w, r, nil, leaf) で描き、プロジェクトの document.pw.html で包まれない（アプリは自分の document を持ってよい）
+- docflow/web の JS・CSS は pw の /public でなく自前の prefix（暫定 /_docflow/）で配る。middlewares.RegisterPublicManifest は 1 つの表だけ（2 度目は置き換え。2026-10-26 に確かめた）
+- カタログは名前を返す。資格の値は出さない（credentials カタログは DOCFLOW_CRED_* とファイルの名前だけ）。接続の保存は名前で、送る時に解決する
+- プリセット・書き出しの YAML に鍵と資格の値は含めない（requirement:docflow の yaml-secrets の暫定のまま）
+- managed のノードは画面も API も読み取り専用（PUT・DELETE・rename は 409）。locked は全部
+non_goals:
+- 動的なプラグイン（Go の plugin、Wasm、別プロセスの種類）
+- 画面で接続と秘密を足して保存先に封をして置くこと（requirement:document-flow の credentials-store の問いのまま）
+- 古い API・保存の形との互換（接続の欄・settings は足すだけで、今のノードはそのまま動く）
+- 独自の口（複数の出力ポート）、独自のコレクション、定期の仕事、at-node の節：fw-4 に回す
+- 外部のマイクロサービスの変換（requirement:document-flow の fl-3）
+capabilities:
+  kind-settings:
+    state: implemented
+    about: capability:docflow/kind-settings
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.kind-settings}
+  kind-fields-form:
+    state: implemented
+    about: capability:docflow/kind-fields-form
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.kind-fields-form}
+  kinds-driven-editor:
+    state: implemented
+    about: capability:docflow/kinds-driven-editor
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.kinds-driven-editor}
+  web-package:
+    state: implemented
+    about: capability:docflow/web-package
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.web-package}
+  self-served-assets:
+    state: implemented
+    about: capability:docflow/self-served-assets
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.self-served-assets}
+  flowtest-public:
+    state: implemented
+    about: capability:docflow/flowtest-public
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.flowtest-public}
+  example-app:
+    state: implemented
+    about: capability:docflow/example-app
+    scope: {milestone: fw-1}
+    evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.example-app}
+  catalogs:
+    state: planned
+    about: capability:docflow/catalogs
+    scope: {milestone: fw-2}
+  connections:
+    state: planned
+    about: capability:docflow/connections
+    scope: {milestone: fw-2}
+  preset-topology:
+    state: planned
+    about: capability:docflow/preset-topology
+    scope: {milestone: fw-2}
+  topology-yaml:
+    state: planned
+    about: capability:docflow/topology-yaml
+    scope: {milestone: fw-2}
+  custom-pages:
+    state: planned
+    about: capability:docflow/custom-pages
+    scope: {milestone: fw-3}
+  nav-and-roles:
+    state: planned
+    about: capability:docflow/nav-and-roles
+    scope: {milestone: fw-3}
+  custom-help:
+    state: planned
+    about: capability:docflow/custom-help
+    scope: {milestone: fw-3}
+  custom-routers:
+    state: planned
+    about: capability:docflow/custom-routers
+    scope: {milestone: fw-4}
+  kind-collections-tickers:
+    state: planned
+    about: capability:docflow/kind-collections-tickers
+    scope: {milestone: fw-4}
+facts:
+  request:
+    text: >-
+      2026-10-26 利用者「docflow はひととおりできた。docflow をベースに、static import でちょっとアレンジして独自ノードを追加するなどして、
+      アレンジできるようなフレームワーク化をしたい。また、popcornweb ベースなので、構造体を登録するだけで設定は自由に足せるはず。
+      S3 の接続先のような設定も、そこで定義した設定をプルダウンで選べたりする、トポロジーもプリセットのを組み込んでスタンドアロンアプリと
+      できる、独自管理画面やユーザー向け画面を足せる、みたいなことが実現できると良いと思う。/knowledge-memory で設計して欲しい」
+  current_state:
+    base: main 66bcd7e6（#165 まで）。2026-10-26 にコードで確かめた
+    kinds: RegisterKind（df-1）。芯は kinds_core.go、入出力は docflow/io/{ipp,http,smtp,s3,notify} と docflow/render の init。cmd/docflow/handlers が blank import。外のモジュールの登録自体は今でもできる
+    settings: 種類ごとの設定は平らな Node（df-1 の利用者の答え）。url・credential・path・text・headers を使い回す。外の種類は自分の欄を持てない
+    editor: topology.js（2078 行）の switch で種類ごとの欄。アダプタは JSON の textarea（ADAPTER_SETTINGS・SETTINGS）。パレットは pages.pw.html に固定（kind-xxx）。アイコンと役割の色は canvas.js の表（ICONS・ROLE_OF・PASSES_ON・MAKES_BDF）。GET /api/kinds は名前・題・役割・受ける種類・required まで
+    config: handlers.RegisterConfig が docflow と oidc を pwconfig に登録。アプリは pw.RegisterConfig[T] で足せる（生成の束縛は自分のディレクトリ）
+    pages: handlers.App（Open・Handler・StartTimer・StartHTTPS・Outermost・Close）。Handler() は閉じた mux、AppBar のリンクは固定、page・viewer・account は非公開、Shell・AppBar は export されていない。公開の木と pw の manifest は package main（cmd/docflow）。catalog は cmd/docflow/messages、help は固定の章
+    store: 外向きは Store.PutState/TakeState/PruneStates だけ。種類が自分のコレクションを持つ口は無い
+    tests: docflow/internal/flowtest（Env の Put・Submit・Tick・Delivery・Required）は外から使えない
+    engine_deps: docflow・docflow/io/...・docflow/render は popcornweb に依存しない（go list -deps）
+    popcornweb_limits: RegisterPublicManifest は 1 つの表だけ（2 度目は置き換え）。RegisterLocales は同じ集合なら no-op、違えば panic。pw.WriteHTML は登録された document で葉を包む。document.pw.html は 1 プロジェクトに 1 つ。[]T の設定は配列の表（TOML だけ、${NAME} で環境変数）。pw は直下に go.mod を求める。pw.ConfigContext[T](nil) は ParseConfig の後なら読める（main が使っている）
+  design:
+    layout:
+      docflow: 芯。足すのは Settings・Fields・Text・カタログ・プリセット。popcornweb に依存しないまま
+      docflow_web: cmd/docflow/handlers・messages・help・public を移す。Config・RegisterConfig・Main・Run・Options・App・Page・API・BindShell・BindAppBar・RegisterNav・RegisterRole・RegisterHelp
+      docflow_flowtest: internal から出す
+      docflow_io_all: 標準の入出力をまとめて blank import する便宜
+      cmd_docflow: 参照アプリ。web.RegisterConfig(); web.Main(web.Options{}) だけ
+      examples_docflow_custom: 独自のアプリの見本。入れ子のモジュール（replace ../..）。pw は直下に go.mod を求めるので
+    main_shape: 'web.RegisterConfig(); pw.RegisterConfig[AcmeConfig]("acme"); web.Main(web.Options{Preset, Routes, Nav, Public})。独自の種類は blank import（init で RegisterKind）'
+    kinds:
+      settings: 'Node.Settings json.RawMessage（json settings）。芯は Fields に照らして形だけ確かめて Check へ。docflow.SettingsOf[T](n) で読む。辺は to・on_error'
+      kind_fields: 'Kind に Titles・Help（Text＝言語の札→文。en 必須）・Group（パレットの見出し。既定は Role から）・Icon（24x24 stroke の path 列）・Fields・Doc（マニュアルの節、Markdown、Text）・Handler（/api/<kind>/{name}/… の自分の API）・Access（Handler の門。既定は役割 topology、viewer・public で緩める）'
+      field: 'Field{Key, Type（string・text・int・bool・duration・enum・catalog・credential・nodes・path・json）, Title, Help, Placeholder（Text）, Required, If, Choices, Catalog, Open, Default, Expands}。Required []Required は Fields から作る。保存済みの settings は PUT のときだけ確かめ、SettingsOf が無い鍵を既定で埋める'
+      kind_info: 'KindInfo に titles・help・group・icon・fields を足す。エディタは GET /api/kinds だけで種類を知る'
+      editor: 'パレットは API から（役割 → source・control・convert・sink、Group で上書き）。ICONS・ROLE_OF・PASSES_ON・MAKES_BDF・TAKES_STOCKED・PRINTS も API から。設定の欄は Fields から作る汎用のフォーム fieldsForm。必須の印は missingOf が fields を見る。芯の種類の専用の欄はそのまま'
+      execution: '役割ごとの口は今のもの（Keyed+Fetch・Serve、PassesOn+Step、Step、Send）。独自の分岐 Kind.Pick は fw-4。popcornweb の設定は種類の側で pw.ConfigContext[T](ctx)'
+      help: 'Kind.Doc を /help/nodes の末尾に。JS の文は Text で届くので catalog は要らない'
+    config:
+      app: 'pw.RegisterConfig[T]("acme") を自分のディレクトリで。popcornweb.toml の generate.config に載せる。docflow/web の束縛はコミット済み'
+      i18n: 'アプリの [i18n] は en, ja / en、cookie_routes ["/"]。3 つ目の言語は先に docflow/web に足す'
+    catalogs:
+      api: 'docflow.RegisterCatalog(name, func(ctx) ([]Choice, error))。Choice{Value, Label（Text）, Group}。GET /api/catalogs/<name>（役割 topology）。Field.Type = catalog。PutNode が値を確かめる（Open なら自由入力も）'
+      connections: '[[docflow.connections]]（name・url・credential・note）。秘密は ${NAME}。s3・smtp・http・s3-trigger・cups-out・printer に connection の欄（scheme で絞る）。保存は名前、送る時に解決。Node.Connection と Manager.Connection(name)'
+      credentials: 'DOCFLOW_CRED_* と credential_dir のファイルの名前だけ。資格の欄の pulldown'
+      app_catalogs: 'RegisterCatalog の中で pw.ConfigContext[AcmeConfig](ctx) を読む（見本に書く）'
+    preset:
+      document: 'version 1、nodes（name・kind・to・…・settings）、layout。YAML（JSON も同じ木）。鍵と資格の値は含めない'
+      import: 'Manager.ImportTopology(ctx, doc, mode)。辺の先から順に PutNode。レイアウトも'
+      modes: 'seed（ノードが無いときだけ）、managed（毎起動で揃え、違いがあるときだけ書く。Node.Managed のノードは読み取り専用）、locked（全部読み取り専用、パレット無し）。既定 managed'
+      io: 'GET /api/topology/export（YAML）、POST /api/topology/import?mode=replace|merge、サブコマンド docflow topology export|import（pw.RegisterSubCommand）。requirement:docflow の topology-yaml を満たす'
+      standalone: 'プリセット（locked）+ 自分の画面 + 入口への送りは Manager.Submit（web が公開）か apps'
+    pages:
+      shell: 'Shell・AppBar を export（BindShell・BindAppBar）。アプリの .pw.html は自分のパッケージで葉を書き、web.Page(role, fn) の中で pw.WriteHTMLChain で包む'
+      nav: 'web.RegisterNav(NavItem{Path, Title（Text）, Role, Place（bar・admin）})。AppBar・AdminNav は {for} で表から（今の固定のリンクも同じ表）'
+      roles: 'web.RegisterRole(name, Title) と [[oidc.roles]]（name・people・groups）。Viewer.Can(name)。topology・audit も同じ仕組みに載せ、今の topology_admins 等は残す'
+      api: 'web.API(role, fn)。docflow.ViewerOf(r)。アプリの API は /api/<prefix>/… で、/api/<kind>/<name> とぶつからない名前（web が確かめる）'
+      assets: 'pw の /public はアプリのもの。docflow/web は /_docflow/（暫定の名前）で embed から自分で配る（ETag・no-cache）。cmd/docflow も同じ道にし、bdf の popcornweb.toml から [assets] を外し dist/public と manifest を消す。開発は web.Options.AssetsDir でディスクから'
+      css: 'docflow の app.css は docflow/web が持ち Shell が読む。アプリは自分の CSS を web.Options.Stylesheets で足す。1 つにするなら @source に docflow/web/*.pw.html を足して Options.Stylesheet で置き換える'
+      help: 'web.RegisterHelp(chapter, lang→Markdown)。Kind.Doc は nodes の章へ'
+    tests:
+      flowtest: 'docflow/flowtest を公開（Env.Put・Submit・Tick・Delivery・Required・Payload）'
+      example: 'examples/docflow-custom：kinds/folder（出口：dir・path（{{meta}}）・overwrite）、[acme] と [[docflow.connections]]、presets/topology.yaml、pages（/acme/dashboard 管理、/acme/portal 利用者向け）。CI で go build・go test・pw generate の差分なし'
+  delivery:
+    current_milestone: fw-1 implemented（milestone:fw-1、2026-10-26）。次は fw-2 か fw-3（fw-1 の後なら独立）
+    outcome: 外のモジュールが独自の種類を 1 つ足した Docflow を pw build で組め、エディタにその種類が欄つきで出て、ジョブが流れる
+    later: fw-2（カタログ・接続・プリセット・YAML）、fw-3（画面・ナビ・ロール・help）、fw-4（独自の分岐・コレクション・定期の仕事・独自の口）
+    approaches:
+      settings_object: '推奨。Node.Settings の 1 オブジェクト + Kind.Fields の宣言。芯の欄と分かれ、YAML・OpenAPI・フォームが素直。今の平らな欄はそのまま残せる'
+      flat_extra: 'Node に extra map[string]any。実装は小さいが芯の欄と名前空間が混ざり、YAML と OpenAPI の形が崩れる'
+      json_only_editor: '独自の種類は今のアダプタと同じ JSON の textarea だけ。実装は最小だが「プルダウンで選べる」が成り立たない。Fields からのフォームを推す'
+    provisional_choices:
+      settings_object: Node.Settings（Claude）
+      web_in_bdf: docflow/web を bdf の中に（Claude）
+      self_served_assets: /_docflow/ を docflow/web が自分で配る（Claude）
+      connections_in_toml: 接続は [[docflow.connections]]（Claude）
+      preset_default_managed: プリセットの既定は managed（Claude）
+      example_nested_module: 見本は examples/docflow-custom の入れ子のモジュール（Claude）
+      text_map: 題・説明は Text（言語の札→文、en 必須）。API は全言語を返し、エディタが lang で選ぶ（Claude）
+    decisions:
+      adapters-to-settings:
+        reason: 今のノードがそのまま動くことが先。移すと保存済みのノードの互換が無い
+        revisit_when: fw-1 で Fields からのフォームが入り、アダプタの JSON の欄が目立つようになったら
+        evidence_needed: アダプタの欄を Fields に書き直す手間と、保存済みの実在のトポロジーの有無
+        provisional_choice: fw-1 では移さない
+        change_boundary: SettingsOf と Fields は芯の欄と独立。移すときは種類ごとに Check を書き換えるだけ
+open_questions:
+  settings-shape:
+    text: 独自の種類の設定の持ち方。A. Node.Settings のオブジェクト（種類ごとの構造体、Kind.Fields で形を宣言）、B. 平らな Node に extra の map
+    state: answered
+    resolution: A。2026-10-26 利用者「暫定の答え（1 = A、3 = A、他も既定）のまま milestone:fw-1 を実装してください」
+  framework-location:
+    text: フレームワークの置き場。A. bdf の docflow/web（cmd/docflow/handlers を移す）、B. 別リポジトリ（bdf を依存に）
+    state: answered
+    resolution: A。2026-10-26 利用者が暫定のまま進めると答えた。メッセージの catalog は docflow/webmessages（docflow/web の下だと pw が生成物を掃く）
+  adapters-to-settings:
+    text: 今のアダプタ（smtp・s3・http・notify・render・s3-trigger）の平らな欄を settings に移すか
+    state: deferred
+    resolution: fw-1 では移さない（facts.delivery.decisions.adapters-to-settings）。移すなら互換なし
+  connections-store:
+    text: 接続（connections）の持ち場所。A. 設定 TOML（[[docflow.connections]]、秘密は ${NAME}）、B. 保存先と画面（封をした秘密が要る）、C. 両方
+    state: open
+    resolution: 暫定（Claude）：A。運用の持ち物として設定に。B は requirement:document-flow の credentials-store と一緒に後で
+  assets-serving:
+    text: docflow/web の JS・CSS の配り方。A. /_docflow/ を docflow/web が自分で配る（embed）、B. アプリの public に写してから pw generate で 1 つの manifest に
+    state: answered
+    resolution: A（2026-10-26 利用者が暫定のまま進めると答えた）。RegisterPublicManifest が 1 つの表だけなので B は手順が増える。prefix の名前は暫定
+  preset-mode:
+    text: プリセットの既定のモード。managed・seed・locked
+    state: open
+    resolution: 暫定（Claude）：managed。スタンドアロンは locked を選ぶ
+  example-location:
+    text: 見本の置き場。A. examples/docflow-custom（入れ子のモジュール、replace）、B. 別リポジトリ
+    state: answered
+    resolution: A（2026-10-26 利用者が暫定のまま進めると答えた）。CI で一緒に試せる
+  custom-ports:
+    text: 独自の種類に複数の出力の口（branch の case のような）を持たせるか
+    state: deferred
+    resolution: fw-4。fw-1 は to・on_error だけ。要る種類が出たら Kind.Ports の宣言を考える
+  kind-state:
+    text: 独自の種類が自分の記録（コレクション）と定期の仕事（tick）を持つ口
+    state: deferred
+    resolution: fw-4（RegisterCollection[T]、RegisterTicker）。それまで PutState/TakeState と自分の保存先
+relations:
+- relation: refines
+  to: requirement:docflow
+- relation: builds_on
+  to: milestone:df-1
+- relation: builds_on
+  to: requirement:docflow-node-editing
+- relation: related_to
+  to: requirement:document-flow
+- relation: related_to
+  to: system:popcornweb
+- relation: related_to
+  to: requirement:docflow-api-layout
+history:
+  fw-1:
+    summary: >-
+      2026-10-26 利用者が暫定の答えのまま fw-1 を頼み、同日に実装した（milestone:fw-1 の facts.implementation）。設計との違い：pw 0.5.16 は
+      public.go を求めるので参照アプリも空の public の木を持つ（/public はアプリのもの、docflow の資産は /_docflow/ のまま）。メッセージの
+      catalog は docflow/web の下に置けず docflow/webmessages に。Field の catalog・Open は fw-2 に残した
+  designed:
+    summary: >-
+      2026-10-26 利用者の依頼を /knowledge-memory で整理した。main 66bcd7e6 の docflow・cmd/docflow・popcornweb v0.5.14 を読んで今の形
+      （facts.current_state）と popcornweb の制約を確かめ、5 つの拡張点の設計（facts.design）、4 つの段（facts.delivery）、問い（open_questions）を立てた。実装はまだ

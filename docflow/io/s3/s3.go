@@ -55,8 +55,12 @@ const DefaultPath = "{{meta.$job}}/{{meta.$name}}"
 func init() {
 	// both name their bucket (url)
 	bucket := []docflow.Required{{Key: "url"}}
-	docflow.RegisterKind(docflow.Kind{Name: KindS3, Title: "S3", Role: docflow.RoleExit, Check: checkS3, Required: bucket, Send: send})
-	docflow.RegisterKind(docflow.Kind{Name: KindTrigger, Title: "S3 Trigger", Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Required: bucket, Fetch: fetch,
+	docflow.RegisterKind(docflow.Kind{Name: KindS3,
+		Titles: docflow.Text{"en": "S3", "ja": "S3"}, Help: docflow.Text{"en": "written to a bucket, once", "ja": "バケットに 1 度だけ書く"},
+		Icon: []string{"M4 7h16l-1.5 13h-13z", "M4 7a8 3 0 0 1 16 0", "M12 10v7", "M9 14l3 3 3-3"}, Role: docflow.RoleExit, Check: checkS3, Required: bucket, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindTrigger,
+		Titles: docflow.Text{"en": "S3 Trigger", "ja": "S3 トリガー"}, Help: docflow.Text{"en": "takes the objects an S3 event names", "ja": "S3 のイベントが指すオブジェクトを受け取る"},
+		Icon: []string{"M4 7h16l-1.5 13h-13z", "M4 7a8 3 0 0 1 16 0", "M13 10l-3 5h4l-3 5"}, Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Required: bucket, Fetch: fetch,
 		FetchSchema: refSchema})
 }
 

@@ -40,7 +40,9 @@ const (
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindNotify, Title: "Notify", Role: docflow.RoleRoute, PassesOn: true, Check: check, Required: required, Step: step})
+	docflow.RegisterKind(docflow.Kind{Name: KindNotify,
+		Titles: docflow.Text{"en": "Notify", "ja": "通知"}, Help: docflow.Text{"en": "tells Slack, a mail or a webhook; failures come along on_error", "ja": "Slack、メール、Webhook に知らせる。失敗は on_error で届く"},
+		Icon: []string{"M6 16V11a6 6 0 0 1 12 0v5l2 2H4z", "M10 21h4"}, Role: docflow.RoleRoute, PassesOn: true, Check: check, Required: required, Step: step})
 }
 
 // required are the settings check refuses a node without: how it

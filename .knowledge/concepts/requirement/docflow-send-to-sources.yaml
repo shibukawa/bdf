@@ -97,4 +97,3 @@ facts:
 history:
   implemented:
     summary: 2026-10-24 依頼の日に実装した。再印刷・スコープ・トークンの扱いは Claude の暫定（open_questions）
-version: 1

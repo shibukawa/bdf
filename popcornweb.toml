@@ -11,15 +11,20 @@ main = "./cmd/docflow"
 [build]
 output = "bin/docflow"
 
+# The web application is the package docflow/web, which cmd/docflow
+# and a program of its own serve: its pages, its configuration and its
+# generated files are there. Its scripts and style are not pw's public
+# tree: docflow/web embeds and serves them itself (assets.go), so that a
+# program composing it keeps /public for its own (there is no [assets]).
 [generate]
-handlers = ["cmd/docflow/handlers"]
-templates = ["cmd/docflow/handlers"]
-config = ["cmd/docflow/handlers"]
+handlers = ["docflow/web"]
+templates = ["docflow/web"]
+config = ["docflow/web"]
 queries = []
 
-# The application's public tree is with it, not at the module's root
-# (package bdf): pw builds cmd/docflow/public into dist/public there,
-# beside public.go of package main, which embeds it.
+# The program's own public tree (pw's /public), which cmd/docflow keeps
+# empty: pw builds it into dist/public beside public.go of package main,
+# which embeds it, as it does for a program composing docflow/web.
 [assets]
 public = "cmd/docflow/public"
 derived = "cmd/docflow/dist/public"
@@ -36,13 +41,15 @@ config = "cmd/docflow/devidp.toml"
 # The pages are in English and Japanese: in the language a person chose
 # with the bar's switch (pw's cookie), else the browser's
 # (Accept-Language), else English. The texts of the templates are the
-# catalog's (cmd/docflow/messages); the scripts' are public/ja.js. The
+# catalog's (docflow/webmessages: beside docflow/web, not under it, as
+# pw sweeps a generated file inside a generate directory that its
+# purposes did not write); the scripts' are public/ja.js. The
 # API is not translated: handlers.App puts only the pages behind the
 # negotiation.
 [i18n]
 locales = ["en", "ja"]
 default_locale = "en"
-catalog = "cmd/docflow/messages"
+catalog = "docflow/webmessages"
 cookie_routes = ["/"]
 
 [i18n.label]

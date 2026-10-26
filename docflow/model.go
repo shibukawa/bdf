@@ -316,6 +316,12 @@ type Node struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	Body        string            `json:"body,omitempty"`
 	Via         string            `json:"via,omitempty"`
+	// Settings are the settings of a kind of its own (one registered
+	// outside the core and its adapters, with Kind.Fields): an object of
+	// the kind's fields, checked against them when the node is put
+	// (fields.go), which the kind reads with SettingsOf. A kind without
+	// fields has none.
+	Settings json.RawMessage `json:"settings,omitempty"`
 }
 
 // Advertised tells a node announced on the local links (Bonjour): one

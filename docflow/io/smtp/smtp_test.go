@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/docflow"
-	"github.com/shibukawa/bdf/docflow/internal/flowtest"
+	"github.com/shibukawa/bdf/docflow/flowtest"
 	"github.com/shibukawa/bdf/docflow/io/smtp"
 )
 

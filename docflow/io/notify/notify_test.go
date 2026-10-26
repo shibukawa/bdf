@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/docflow"
-	"github.com/shibukawa/bdf/docflow/internal/flowtest"
+	"github.com/shibukawa/bdf/docflow/flowtest"
 	_ "github.com/shibukawa/bdf/docflow/io/http"
 	"github.com/shibukawa/bdf/docflow/io/notify"
 	_ "github.com/shibukawa/bdf/docflow/render"

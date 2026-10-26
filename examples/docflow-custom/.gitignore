@@ -1,0 +1,4 @@
+/bin/
+/dist/cache/
+/docflow.db
+/.env.local

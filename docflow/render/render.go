@@ -32,7 +32,9 @@ const (
 const DPI = 150
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindRender, Role: docflow.RoleStep, Takes: []string{docflow.PayloadBDF}, Makes: docflow.PayloadAny,
+	docflow.RegisterKind(docflow.Kind{Name: KindRender,
+		Titles: docflow.Text{"en": "Render", "ja": "描画"}, Help: docflow.Text{"en": "draws a .bdf document as a PDF, or a page as a PNG", "ja": ".bdf 文書を PDF に、またはページを PNG に描く"},
+		Icon: []string{"M4 4h16v16H4z", "M4 16l5-5 4 4 3-3 4 4", "M15 8h.01"}, Role: docflow.RoleStep, Takes: []string{docflow.PayloadBDF}, Makes: docflow.PayloadAny,
 		Check: check, Step: step})
 }
 
