@@ -8,5 +8,8 @@ import "github.com/shibukawa/popcornweb/middlewares"
 // the request path reads bytes and computes nothing.
 func init() {
 	middlewares.RegisterPublicManifest([]middlewares.AssetEntry{
+		{URL: ".gitkeep", CacheControl: "public, no-cache", Revision: "4ed7ce428c7de45e", Representations: []middlewares.AssetRepresentation{
+			{Path: ".gitkeep", MediaType: "text/plain; charset=utf-8", ContentEncoding: "", Length: 0, ETag: "\"e3b0c44298fc1c149afbf4c8996fb924\"", Preference: 1, External: false},
+		}},
 	})
 }
