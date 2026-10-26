@@ -85,7 +85,7 @@ verification:
   example-build:
     state: passed
     authority: observed
-    evidence: {path: examples/docflow-custom/popcornweb.toml, locator: '2026-10-26 macOS。pw 0.5.16（CI と同じ版を scratch に入れた。手元の pw 0.6.0 は 0.6.0 の実行系向けに生成するので使わない）で bin/docflow（38 MB）と examples/docflow-custom/bin/docflow-custom（38 MB）'}
+    evidence: {path: examples/docflow-custom/popcornweb.toml, locator: '2026-10-26 macOS。最初は pw 0.5.16（当時の CI の版）で、同日 popcornweb を 0.6.0 に上げてからは手元の pw 0.6.0 で bin/docflow と examples/docflow-custom/bin/docflow-custom を作った'}
     method: integration
     test: cd examples/docflow-custom && pw build && go build ./... ; go build ./cmd/docflow
   editor-browser:
@@ -120,7 +120,7 @@ facts:
     editor: 'canvas.js の表を setKinds で API から、DEFAULT_ICONS。admin.js の KINDS を loadKinds で。topology.js の buildPalette・ownKind・fieldsForm・settingsFormOf。jobs.js・admin-jobs.js も loadKinds。ja.js の種類名の文を消し、4 つ足した'
     reference_app: 'cmd/docflow は RegisterConfig と Main(Options{Public: publicTree()})。pw 0.5.16 は public.go を求めるので、空の public の木（public/.gitkeep、dist/public/.keep、manifest）を持つ。popcornweb.toml の [generate] と [i18n].catalog を移し、[assets] は cmd/docflow の空の木'
     example: 'examples/docflow-custom：go.mod（replace ../..）、popcornweb.toml（generate は空、assets は public）、main.go、public.go、kinds/folder、config.dev.toml、devidp.toml、README。CI に go vet・go test・pw build の段'
-    ci: 'ci.yml：go generate ./docflow/web、pw generate、差分は docflow/web と cmd/docflow。examples/docflow-custom の段。pw generate は examples/docflow-custom/public_manifest_pw_gen.go を「purpose の外」と警告する（入れ子のモジュールを歩く。失敗ではない）'
+    ci: 'ci.yml：go generate ./docflow/web、pw v0.6.0 の generate（go.mod も popcornweb v0.6.0・tinybind-go v0.6.0・tinygodriver v1.3.8：2026-10-26 利用者「0.6.0 で CI も実行するようにして欲しい」）、差分は docflow/web と cmd/docflow。examples/docflow-custom の段。pw generate は examples/docflow-custom/public_manifest_pw_gen.go を「purpose の外」と警告する（入れ子のモジュールを歩く。失敗ではない）'
     not_in_fw1: 'Field の catalog・Open（fw-2）、Kind.Pick・独自の口（fw-4）、Options.Routes の先の Page・API・Nav（fw-3。Routes の口と App.Manager・Viewer だけ）'
 relations:
 - relation: refines
