@@ -1,6 +1,6 @@
 // Builds the site published on GitHub Pages:
 //
-//   index.html, index.ja.html   the top page (home.mjs), which shows a PDF from bdf
+//   index.html, index.ja.html   the top page (home.mjs), which shows a PDF from bdf, and writes it back out
 //   viewer/                     the demo viewer (examples/viewer)
 //   form/                       a template of a form filled with what is typed into the form made of its tags
 //   thumbnail/, text/           thumbnails and search text of a file dropped on the page
@@ -188,7 +188,8 @@ async function workerSize() {
 async function buildHome() {
   const pdf = join(root, "site/demo/demo.pdf"), bdf = join(out, "demo.bdf");
   await execFile("go", ["run", "./cmd/bdf", "generate", "-q", pdf, bdf], { cwd: root });
-  await bundle(out, [["site/home.ts", "home"]]);
+  const minisearch = JSON.parse(await readFile(join(root, "node_modules/minisearch/package.json"), "utf8")).version;
+  await bundle(out, [["site/home.ts", "home"]], { define: { MINISEARCH_VERSION: JSON.stringify(minisearch) } });
   await copyFile(join(root, "site/site.css"), join(out, "site.css"));
   const benchmark = JSON.parse(await readFile(join(root, "docs/benchmarks/latest.json"), "utf8"));
   const info = { demo: { pdf: (await stat(pdf)).size, bdf: (await stat(bdf)).size }, formats: (await formats()).length, worker: await workerSize(), benchmark };

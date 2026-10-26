@@ -41,3 +41,7 @@ The home page's search box (`web/search.ts`) calls `/search`, lists what comes b
 ## Why this shape
 
 Search only needs the document's text, not its rendering. That's why it composes cleanly with whichever conversion architecture a system already uses — this example builds it on preview-server's for convenience, but light-server's would work too, since SearchText only needs a converted BDF, made once when a document is indexed (or re-indexed), not on every request. Keeping the search API key server-side, and proxying the query rather than querying Meilisearch straight from the browser, means the browser never needs credentials for the search engine at all.
+
+## The same records, without a server
+
+The [top page of the site](https://shibukawa.github.io/bdf/) runs the same idea inside the browser: the text of its demo document comes out of the preview module (`bdf text`, built as WebAssembly), one record a page, and goes into [MiniSearch](https://github.com/lucaong/minisearch), a JavaScript search library, with Japanese text indexed as pairs of neighboring characters (bigrams, the usual way without a dictionary; the browser's `Intl.Segmenter` knows only the words of its dictionary, and cuts ぶらうざ into four characters) and each term normalized by `normalizeQuery` of `@bdfkit/core`, as the viewer's own search normalizes. A hit turns the viewer to its page. It is what a small application with a handful of documents can do with no search engine at all; the records are the ones a search engine would get.

@@ -315,3 +315,32 @@ dialog.password .buttons { display: flex; justify-content: flex-end; gap: .5rem;
 @media (prefers-color-scheme: dark) {
   .preview { background: #30363d; }
 }
+
+/* the way back out of BDF, under the document of the top page */
+.back { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.back .tabs { display: flex; flex-wrap: wrap; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--subtle); }
+.back .tabs button { padding: .55rem 1rem; background: transparent; font-size: .9375rem; }
+.back .tabs button[aria-selected="true"] { background: var(--bg); }
+.back .panel { padding: 1rem; }
+.back .panel > .about { margin: 0 0 .75rem; color: var(--muted); font-size: .9375rem; }
+.back .row { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin: 0 0 .75rem; }
+.back .row label { display: inline-flex; gap: .4rem; align-items: center; font-size: .9375rem; }
+.back .row select, .back .row input[type="search"] { padding: .3rem .5rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.back .row input[type="search"] { flex: 1 1 14rem; max-width: 28rem; }
+.back .row .button { padding: .3rem .9rem; font-size: .9375rem; }
+.back .row .button:disabled { opacity: .5; cursor: default; }
+.back .row .status { flex-basis: 100%; min-height: 0; margin: 0; }
+.back .output { height: min(50vh, 24rem); min-height: 10rem; margin: 0 0 .75rem; }
+.back iframe { display: block; width: 100%; height: min(70vh, 40rem); margin: 0 0 .75rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.back .links { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin: 0 0 .75rem; }
+.back .results { margin: 0 0 .75rem; padding: 0; list-style: none; }
+.back .results li { padding: .5rem 0; border-top: 1px solid var(--border); }
+.back .results li:first-child { border-top: 0; }
+.back .results a { font-weight: 600; text-decoration: none; }
+.back .results a:hover { text-decoration: underline; }
+.back .results p { margin: .15rem 0 0; color: var(--muted); font-size: .9375rem; line-height: 1.5; }
+.back .results mark { background: rgba(255, 210, 0, .45); color: inherit; border-radius: 2px; }
+.back pre { margin: 0; }
+.back pre + pre { margin-top: .5rem; }
+/* (the links and the frame come once a file is written) */
+.back [hidden] { display: none; }
