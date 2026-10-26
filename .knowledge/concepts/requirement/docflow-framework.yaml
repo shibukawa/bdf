@@ -94,6 +94,11 @@ capabilities:
     about: capability:docflow/example-app
     scope: {milestone: fw-1}
     evidence: {path: .knowledge/concepts/milestone/fw-1.yaml, locator: capabilities.example-app}
+  gen-project:
+    state: implemented
+    about: capability:docflow/gen-project
+    scope: {milestone: fw-1}
+    evidence: {path: docflow/web/scaffold.go, locator: 'GenProject・RegisterCommands・GenerateProject。scaffold/ は examples/docflow-custom を名前とモジュールの引数にした雛形（scaffold_test.go が同じであることを確かめる）'}
   catalogs:
     state: planned
     about: capability:docflow/catalogs
@@ -264,6 +269,12 @@ relations:
 - relation: related_to
   to: requirement:docflow-api-layout
 history:
+  gen-project:
+    summary: >-
+      2026-10-27 利用者「docflow gen-project サブコマンドでプロジェクトを作成できるようにして欲しい」。docflow gen-project <dir>
+      [--module] [--name] [--bdf <checkout>] [--force] が examples/docflow-custom と同じ形のプロジェクトを書く（PR 168 に追加）。
+      雛形は docflow/web/scaffold/*.tmpl（区切りは [[ ]]：folder.go の {{meta.<key>}} とぶつからないため）、版は debug.ReadBuildInfo
+      （チェックアウトから作った docflow は bdf v0.0.0 と言い、--bdf を勧める）。pw.RegisterSubCommand は web.RegisterCommands で、cmd/docflow が呼ぶ
   fw-1:
     summary: >-
       2026-10-26 利用者が暫定の答えのまま fw-1 を頼み、同日に実装した（milestone:fw-1 の facts.implementation）。設計との違い：pw 0.5.16 は

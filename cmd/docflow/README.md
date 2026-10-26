@@ -294,7 +294,11 @@ same application with kinds of node of its own (registered with
 editor lays them out), settings of its own (`pw.RegisterConfig`), and
 its own pages and API (`web.Options.Routes`), and is built with `pw build`
 as this one is: [examples/docflow-custom](../../examples/docflow-custom)
-is one, with a `folder` exit.
+is one, with a `folder` exit. `docflow gen-project <dir>` writes such a
+project to start from (the example itself, with the project's name and
+module path: `--module example.com/acme/docflow`, `--name`, and `--bdf
+../bdf` for a checkout of bdf instead of the released module); then
+`go mod tidy` and `pw dev` in it.
 
 ## Generated files
 

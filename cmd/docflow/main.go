@@ -24,5 +24,7 @@ import (
 
 func main() {
 	web.RegisterConfig()
+	// docflow gen-project <dir> writes a project of one's own
+	web.RegisterCommands()
 	web.Main(web.Options{Public: publicTree()})
 }

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"log/slog"
+	"os"
 
 	"github.com/shibukawa/popcornweb/plugin/auth"
 	"github.com/shibukawa/popcornweb/pw"
@@ -49,6 +50,10 @@ func Main(o Options) {
 func Run(ctx context.Context, o Options) error {
 	if err := pw.ParseConfig(); err != nil {
 		return err
+	}
+	// a subcommand (RegisterCommands): gen-project writes a project
+	if c, ok := pw.Command[GenProject](); ok {
+		return GenerateProject(c, os.Stdout)
 	}
 	// --generate-config, the health probe …: answered before the store
 	// is opened
