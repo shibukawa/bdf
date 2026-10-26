@@ -1,0 +1,22 @@
+# The people of pw dev's development OpenID Provider (popcornweb.toml
+# [dev.idp]): signing in is picking one, no password is checked. Their
+# groups are the claim "groups" (config.dev.toml: oidc.groups_claim, and
+# oidc.admin_groups = docflow-admins). Editing this reloads it without a
+# restart. Development only.
+
+[users.admin]
+display_name = "Ada Admin"
+[users.admin.claims]
+email = "admin@example.com"
+groups = ["docflow-admins"]
+
+[users.member]
+display_name = "Mina Member (warehouse-a)"
+[users.member.claims]
+email = "member@example.com"
+groups = ["warehouse-a"]
+
+[users.outsider]
+display_name = "Otto Outsider (no groups)"
+[users.outsider.claims]
+email = "outsider@example.com"

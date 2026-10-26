@@ -1,0 +1,32 @@
+# A Popcorn Web project of its own, composing BDF Docflow (docflow/web)
+# with a kind of node of its own: pw finds the project by this file,
+# beside go.mod. pw dev runs it, pw build makes bin/[[.Name]].
+[project]
+name = "[[.Name]]"
+main = "."
+
+[build]
+output = "bin/[[.Name]]"
+
+# Nothing of this program's own is generated: its pages and settings
+# are Docflow's (docflow/web, whose generated files are committed in
+# bdf). A program with pages, settings or queries of its own lists
+# their directories here.
+[generate]
+handlers = []
+templates = []
+config = []
+queries = []
+
+# The program's own public tree (/public), empty here: Docflow's scripts
+# and style are served by docflow/web at /_docflow/.
+[assets]
+public = "public"
+derived = "dist/public"
+embed = "public.go"
+
+# pw dev's development OpenID Provider, with the same people as
+# cmd/docflow's.
+[dev.idp]
+enabled = true
+config = "devidp.toml"

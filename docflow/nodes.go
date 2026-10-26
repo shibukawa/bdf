@@ -44,6 +44,11 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			return "", err
 		}
 	}
+	// the settings of a kind of its own, against its fields, before its
+	// own check sees them
+	if err := checkSettings(k, in, &n); err != nil {
+		return "", err
+	}
 	if k.Check != nil {
 		if err := k.Check(ctx, m, in, &n); err != nil {
 			return "", err

@@ -12,8 +12,9 @@ nobody changes. Paper is one destination among others. The topology is
 laid out on the admin page, as the printers and classes of a CUPS server
 are, with edges drawn between nodes (see *Topology* below).
 
-The engine is [docflow](../../docflow); this is its web
-application on [Popcorn Web](https://github.com/shibukawa/popcornweb). It
+The engine is [docflow](../../docflow), the web application
+[docflow/web](../../docflow/web) on [Popcorn Web](https://github.com/shibukawa/popcornweb); this
+command serves it with every input and output. It
 keeps no state in the process: the records and the documents are in a
 [yuruidb](https://github.com/shibukawa/yuruidb) store, so the same binary
 runs as one process on a site's server or as a function of AWS Lambda.
@@ -95,7 +96,7 @@ and who is an admin is `[oidc]`:
 | `OIDC_ALLOWED_ISSUERS`, `OIDC_ALLOWED_DOMAINS`, `OIDC_ALLOWED_GROUPS` | narrow who gets in (email domain or Google's `hd`; admins always get in) |
 
 The rest of `[auth]` and `[session]` is Docflow's
-(`handlers.ConfigureAuth`): the state of a login on its way through the
+(`web.ConfigureAuth`): the state of a login on its way through the
 IdP is kept in the records' store, so that any instance finishes it, and
 the session is a sealed cookie (`session.keyring.secret`, or made of
 `DOCFLOW_SECRET`). The groups are copied at each login; who is an admin
@@ -183,8 +184,8 @@ browser's (Accept-Language), else in English. The templates' texts are
 the catalog [messages/pages.yaml](messages/pages.yaml), which `pw
 generate` compiles and checks against every `{t id}` of the templates;
 the scripts write theirs in English in `_("…")`
-([public/i18n.js](public/i18n.js)), and [public/ja.js](public/ja.js) has
-their Japanese, loaded on a Japanese page only (`public_test.go` checks
+([docflow/web/public/i18n.js](../../docflow/web/public/i18n.js)), and [public/ja.js](../../docflow/web/public/ja.js) has
+their Japanese, loaded on a Japanese page only (`assets_test.go` checks
 that every text has its translation, and every translation its text). The
 API is not translated: its errors, shown in the pages' toasts, are
 English.
@@ -283,37 +284,56 @@ S3, and let EventBridge Scheduler call `POST /api/tick` every minute. To
 print on a site's printers, put the function in a VPC that reaches them
 (Direct Connect or a VPN).
 
+## A program of its own
+
+The web application is the package `docflow/web`; this command is
+`web.RegisterConfig()` and `web.Main(web.Options{})` with every input and
+output imported (`docflow/io/all`). A program of its own composes the
+same application with kinds of node of its own (registered with
+`docflow.RegisterKind`, with the fields of their settings, so that the
+editor lays them out), settings of its own (`pw.RegisterConfig`), and
+its own pages and API (`web.Options.Routes`), and is built with `pw build`
+as this one is: [examples/docflow-custom](../../examples/docflow-custom)
+is one, with a `folder` exit. `docflow gen-project <dir>` writes such a
+project to start from (the example itself, with the project's name and
+module path: `--module example.com/acme/docflow`, `--name`, and `--bdf
+../bdf` for a checkout of bdf instead of the released module); then
+`go mod tidy` and `pw dev` in it.
+
 ## Generated files
 
 pw reads `popcornweb.toml` at the repository's root (it wants it beside
-`go.mod`): `[generate]` names only `cmd/docflow/handlers`, and
-`[assets]` places the public tree in `cmd/docflow` (`public`, built
-into `dist/public` and embedded by `public.go`). After changing the pages
-(`.pw.html`), their texts (`messages/pages.yaml`), `handlers/config.go` or
-a file in `public` (the manual in `help/` needs nothing: the Markdown is
-embedded as it is), run from the repository's root:
+`go.mod`): `[generate]` names only `docflow/web`. After changing the
+pages (`docflow/web/pages.pw.html`), their texts
+(`docflow/webmessages/pages.yaml`) or `docflow/web/config.go` (the
+manual in `docflow/web/help/` and the scripts in `docflow/web/public`
+need nothing: they are embedded as they are), run from the repository's
+root:
 
 ```sh
 pw generate
 ```
 
 and commit what it wrote: the `*_pw_gen.go` files (the catalog's is
-`messages/messages_pw_gen.go`), `dist/public` and
-`public_manifest_pw_gen.go`. The module's build runs no generator, so a
-plain `go build` embeds what is committed.
+`docflow/webmessages/messages_pw_gen.go`). The module's build runs no generator, so
+a plain `go build` embeds what is committed. The scripts and the style
+are not pw's public tree: `docflow/web` embeds `public` and serves it at
+`/_docflow/` itself, so that a program composing it keeps `/public` for
+its own assets.
 
 ## Style
 
 The pages use [Tailwind CSS](https://tailwindcss.com) and
-[daisyUI](https://daisyui.com), built into `public/app.css` (committed, and
-embedded in the binary: no CDN); the manual's HTML is styled by Tailwind's
-typography plugin (`prose`), which the standalone CLI bundles. No Node or npm: the standalone
-`tailwindcss` CLI loads daisyUI's release files in `tailwind/` (versions
-and hashes in `tailwind/VERSIONS`). After changing the pages' markup or
-classes, with that CLI on the PATH (`brew install tailwindcss`):
+[daisyUI](https://daisyui.com), built into `docflow/web/public/app.css`
+(committed, and embedded in the binary: no CDN); the manual's HTML is
+styled by Tailwind's typography plugin (`prose`), which the standalone
+CLI bundles. No Node or npm: the standalone `tailwindcss` CLI loads
+daisyUI's release files in `docflow/web/tailwind/` (versions and hashes
+in `tailwind/VERSIONS`). After changing the pages' markup or classes,
+with that CLI on the PATH (`brew install tailwindcss`):
 
 ```sh
-go generate ./cmd/docflow
+go generate ./docflow/web
 pw generate
 ```
 

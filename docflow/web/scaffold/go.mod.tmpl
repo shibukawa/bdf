@@ -1,0 +1,11 @@
+module [[.Module]]
+
+go [[.GoVersion]]
+
+require (
+	github.com/shibukawa/bdf [[.BdfVersion]]
+	github.com/shibukawa/popcornweb [[.PopcornwebVersion]]
+)
+[[if .Replace]]
+replace github.com/shibukawa/bdf => [[.Replace]]
+[[end]]

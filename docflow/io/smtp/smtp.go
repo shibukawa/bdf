@@ -37,7 +37,9 @@ import (
 const KindSMTP = "smtp"
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindSMTP, Title: "Mail (SMTP)", Role: docflow.RoleExit, Check: Check, Required: Required(nil), Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindSMTP,
+		Titles: docflow.Text{"en": "Mail (SMTP)", "ja": "メール（SMTP）"}, Help: docflow.Text{"en": "mails it as an attachment", "ja": "添付ファイルとしてメールで送る"},
+		Icon: []string{"M3 6h18v12H3z", "M3 7l9 6 9-6"}, Role: docflow.RoleExit, Check: Check, Required: Required(nil), Send: send})
 }
 
 // Required are the settings Check refuses a mail without (the server, the

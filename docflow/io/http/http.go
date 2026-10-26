@@ -58,7 +58,9 @@ const (
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindHTTP, Title: "HTTP (push)", Role: docflow.RoleExit, Check: check, Required: []docflow.Required{{Key: "url"}}, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindHTTP,
+		Titles: docflow.Text{"en": "HTTP (push)", "ja": "HTTP (push)"}, Help: docflow.Text{"en": "sent to a web service, as the body or as multipart", "ja": "Web サービスに送る。ボディそのままか multipart で"},
+		Icon: []string{"M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 15V9a2 2 0 0 1 2-2h7", "M17 3l4 4-4 4"}, Role: docflow.RoleExit, Check: check, Required: []docflow.Required{{Key: "url"}}, Send: send})
 }
 
 // headerRE is the shape of a header's name.

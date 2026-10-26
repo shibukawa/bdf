@@ -46,10 +46,16 @@ const (
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindCups, Title: "CUPS server (source)", Role: docflow.RoleEntry, PassesOn: true, Check: checkCups, Serve: serveCups})
-	docflow.RegisterKind(docflow.Kind{Name: KindCupsOut, Title: "CUPS server (sink)", Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
+	docflow.RegisterKind(docflow.Kind{Name: KindCups,
+		Titles: docflow.Text{"en": "CUPS server (source)", "ja": "CUPS サーバー（ソース）"}, Help: docflow.Text{"en": "the IPP entry: computers print to it, on a port of its own", "ja": "IPP の入口。コンピュータが専用のポートで印刷する"},
+		Icon: []string{"M4 5h16v6H4z", "M4 13h16v6H4z", "M7 8h.01", "M7 16h.01", "M15 8h2", "M15 16h2"}, Role: docflow.RoleEntry, PassesOn: true, Check: checkCups, Serve: serveCups})
+	docflow.RegisterKind(docflow.Kind{Name: KindCupsOut,
+		Titles: docflow.Text{"en": "CUPS server (sink)", "ja": "CUPS サーバー（シンク）"}, Help: docflow.Text{"en": "printed to a queue of a CUPS server, over IPP", "ja": "CUPS サーバーのキューに IPP で印刷する"},
+		Icon: []string{"M3 5h12v6H3z", "M3 13h12v6H3z", "M6 8h.01", "M6 16h.01", "M17 12h5", "M19 9l3 3-3 3"}, Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
 		Check: checkCupsOut, Send: sendCupsOut, Discover: discoverQueues})
-	docflow.RegisterKind(docflow.Kind{Name: KindPrinter, Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
+	docflow.RegisterKind(docflow.Kind{Name: KindPrinter,
+		Titles: docflow.Text{"en": "Printer", "ja": "プリンタ"}, Help: docflow.Text{"en": "printed on paper", "ja": "紙に印刷する"},
+		Icon: []string{"M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"}, Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
 		Check: checkPrinter, Ready: ready, Send: send, Discover: discoverPrinters})
 	docflow.RegisterIngress(docflow.Ingress{Name: "ipp", Prefix: Path, Mount: mount, Address: func(n *docflow.Node) string {
 		if n.Kind != KindCups {

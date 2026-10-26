@@ -91,6 +91,21 @@ func Handler(m *Manager) http.Handler {
 		if keyed(k.Name) {
 			mux.HandleFunc("POST "+APIPath+"/"+k.Name+"/{name}", h.serveIn(k.Name))
 		}
+		// a kind's own API, under every node of the kind (Kind.Handler),
+		// for whoever its Access lets
+		if k.Handler != nil {
+			own := k.Handler(m)
+			var serve http.HandlerFunc
+			switch k.Access {
+			case AccessPublic:
+				serve = own.ServeHTTP
+			case AccessViewer:
+				serve = h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { own.ServeHTTP(w, r) })
+			default:
+				serve = h.adminOnly(own.ServeHTTP)
+			}
+			mux.HandleFunc(APIPath+"/"+k.Name+"/{name}/", serve)
+		}
 	}
 	inbox, download := APIPath+"/"+KindInbox, APIPath+"/"+KindDownload
 	mux.HandleFunc("GET "+inbox, h.cors(h.listInboxes))
