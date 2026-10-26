@@ -193,3 +193,6 @@ docflow.db
 !cmd/docflow/dist/
 cmd/docflow/dist/*
 !cmd/docflow/dist/public/
+# docflow/web/scaffold holds the files docflow gen-project writes, the
+# project's dist/public/.keep (its embedded tree) among them
+!docflow/web/scaffold/dist/
