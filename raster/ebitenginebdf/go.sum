@@ -10,8 +10,8 @@ github.com/klauspost/compress v1.20.3 h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTf
 github.com/klauspost/compress v1.20.3/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/molecule-man/go-brrr v1.3.0 h1:KEGPkUk9PYFw5+Sv/evCOSU5OmMDXCGFqQ9YjRB7GeU=
 github.com/molecule-man/go-brrr v1.3.0/go.mod h1:7ybW6/7gA3oKY45jOfVNjSJDtrr6ea4tzbsTkjmQDC4=
-github.com/shibukawa/tinygodriver v1.3.6 h1:euW5NsfP1ByI5kVcDy9Wnre6NPUHbFHbPpsq1fN44bc=
-github.com/shibukawa/tinygodriver v1.3.6/go.mod h1:wCcrdtPHO4kv68Jt8SgI/Zm4wuh9D6Qcokdc0kID/U4=
+github.com/shibukawa/tinygodriver v1.3.8 h1:FLB1iWJImSfyN4QfRZcL1l1IaInxZGMttnpKWElaMVk=
+github.com/shibukawa/tinygodriver v1.3.8/go.mod h1:wCcrdtPHO4kv68Jt8SgI/Zm4wuh9D6Qcokdc0kID/U4=
 golang.org/x/image v0.47.0 h1:za/8gVz++PPZqmZJBNSISICN5Rrj5zixP/8K++fgmqo=
 golang.org/x/image v0.47.0/go.mod h1:IkN5o4A7vq55vXN8FWjjnhg9Rs2GOtffqsSi9mWAKYE=
 golang.org/x/net v0.61.0 h1:RR+6j/BTBCrggOLugxa+66R8FvoN6MHlzDlZIbN9YFw=
