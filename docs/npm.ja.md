@@ -126,6 +126,8 @@ npm pack --dry-run --workspace @bdfkit/convert-office
 
 `.github/workflows/publish.yml` は `v*` タグを push すると 7 つのパッケージを公開します。タグと全パッケージのバージョンが一致することを確認し、TypeScript と Wasm のビルド・テスト、tarball の確認を行ってから依存順に公開します。
 
+`.github/workflows/ci.yml` も、Go のコードや `go.mod`、ビルドスクリプトに触れた pull request と push では、同じ TinyGo で PDF + EPUB プリセットだけをコンパイルします。TinyGo でコンパイルできない依存が入っても、リリースではなくタグを打つ前に分かります。
+
 初回リリースは手元から公開し、その後 npm の Trusted Publisher を 7 パッケージに登録します。公開するマシンで npm にログインし、依存順に実行します。
 
 ```sh
