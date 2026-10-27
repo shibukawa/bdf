@@ -113,7 +113,7 @@ capabilities:
     about: capability:print-manager/extract-node
   io-nodes:
     state: partial
-    about: capability:print-manager/io-nodes（smtp・s3・http は milestone:fl-2、ftp は fl-4）
+    about: capability:print-manager/io-nodes（smtp・s3・http は milestone:fl-2、ftp・sftp（出口と見回りの入口）は requirement:docflow-file-transfer の milestone:fl-4a、2026-10-27 実装。scp は入れない、同日の利用者）
   s3-trigger-entry:
     state: implemented
     about: capability:print-manager/s3-trigger-entry

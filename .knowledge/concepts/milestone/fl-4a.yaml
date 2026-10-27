@@ -1,0 +1,148 @@
+id: milestone:fl-4a
+type: milestone
+title: fl-4a — FTP / SFTP。出口 ftp・sftp（一時名に上げて rename）、見回りの入口 ftp-poll・sftp-poll（Kind.Tick、rename で取り置き）、Discover のホスト鍵、自前のクライアント
+summary: >-
+  requirement:docflow-file-transfer の最初の段（2026-10-27 に整理し、同日、利用者の「暫定の選択のまま実装」で実装した）。fl-1・fl-2 が「fl-4」に送っていた ftp をここに切り出す。
+  fl-4 の残り（人の操作のノード、人の入力の入口、split、dedupe、流量）はそのまま fl-4。docflow/io/ftp と docflow/io/sftp を init で登録し、
+  設定は fw-1 の Node.Settings + Kind.Fields。出口は folder の雛形の遠隔版、入口は Kind.Tick（種類ごとの tick の口。fw-4 の
+  kind-collections-tickers の tick の方だけ前に出す）。部品は x/crypto/ssh の上の自前の SFTP v3 と stdlib の上の自前の FTP(S)（依存 0。
+  open_questions.libraries が B になれば jlaffaye/ftp + pkg/sftp）。問い（入口の形・種類の数・部品・TLS の既定・後始末の既定）は
+  要件の open_questions に暫定の答えつきで。
+lifecycle: active
+authority: authored
+scope:
+  milestone: fl-4a
+constraints:
+- 芯（package docflow）は ssh・ftp の部品を import しない。種類は docflow/io/ftp と docflow/io/sftp。芯に足すのは Kind.Tick の口と、ノードの小さな状態（最後に見回った時刻）だけ
+- 出口の冪等：一時名 .<delivery の ID>.part に上げて rename。最終の名前があれば done（overwrite が無ければ）。result は置いたパス
+- 入口の取り置き：読む前に <name>.docflow-<node>.taking へ rename。負けたら飛ばす。残ったものは同じノードが次の tick で拾い直す
+- 資格の値はログ・API・TickReport に出さない。URL にパスワードがあるノードは PUT で断る。SFTP のホスト鍵は必ず留める
+- 既存の種類と試験は変えない（smtp・s3・http は平らな Node の欄のまま）
+non_goals:
+- Docflow 自身が FTP / SFTP のサーバーになる形（requirement:docflow-file-transfer の server-mode）
+- WebDAV（survey:transfer-protocols の次の候補。別の段）
+- known_hosts のファイル、SSH の agent、暗号化された秘密鍵
+- fw-2 の接続先カタログへの登録（来たら載せる）
+- fl-4 の残り（人の操作・人の入力・split・dedupe・流量）
+capabilities:
+  ftp-exit:
+    state: implemented
+    about: capability:docflow/ftp-exit
+    evidence: {path: docflow/io/ftp/ftp.go, locator: 'KindFTP。Fields は transfer.ExitFields(url, credential, tls, tls_fingerprint)、Check は site()、Send は transfer.Send。ftp_test.go の TestFTPOut・TestFTPTLS'}
+  sftp-exit:
+    state: implemented
+    about: capability:docflow/sftp-exit
+    evidence: {path: docflow/io/sftp/sftp.go, locator: 'KindSFTP。Fields は transfer.ExitFields(url, credential, host_key)。sftp_test.go の TestSFTPOut・TestSFTPAuth'}
+  ftp-poll-entry:
+    state: implemented
+    about: capability:docflow/ftp-poll-entry
+    evidence: {path: docflow/io/ftp/ftp.go, locator: 'KindPoll = ftp-poll（RoleEntry、PassesOn、Tick）。ftp_test.go の TestFTPPoll（NLST の道、move）'}
+  sftp-poll-entry:
+    state: implemented
+    about: capability:docflow/sftp-poll-entry
+    evidence: {path: docflow/io/sftp/sftp.go, locator: 'KindPoll = sftp-poll。sftp_test.go の TestSFTPPoll（pattern・every・settle・max_per_tick・取り置き・refused・大きすぎ）と TestSFTPPollMove'}
+  kind-tick:
+    state: implemented
+    about: capability:docflow/kind-tick
+    evidence: {path: docflow/kind.go, locator: 'Kind.Tick（send.go の Tick がノードごとに呼ぶ。TickReport.Ticked・Polled・Notes と Note()）。ノードの状態は kindstate.go の KindState・PutKindState（kind-states、DeleteNode で消す）'}
+  host-key-discover:
+    state: implemented
+    about: capability:docflow/host-key-discover
+    evidence: {path: docflow/io/sftp/ssh.go, locator: 'HostKey()（署名なしの handshake で鍵だけ取る）と sftp.go の discover（host_key・fingerprint・type）。エディタは topology.js の discoverField（Fields の種類で discovers なら「サーバーに聞く」、答えの同名の欄を埋める）。TestSFTPDiscover'}
+  sftp-client:
+    state: implemented
+    about: capability:docflow/sftp-client
+    evidence: {path: docflow/io/sftp/client.go, locator: 'Client：INIT/VERSION、STAT、OPENDIR/READDIR、MKDIR、REMOVE、RENAME（posix-rename@openssh.com があればそれ、無ければ replace は先に REMOVE）、READ と WRITE は 16 本 × 32 KiB の窓で pipeline。ssh.go の Dial（x/crypto/ssh、パスワード + keyboard-interactive か PEM の鍵、ホスト鍵は ParseHostKey）。client_test.go の TestClientFake と TestClientOpenSSH（/usr/libexec/sftp-server を stdio で）'}
+  ftp-client:
+    state: implemented
+    about: capability:docflow/ftp-client
+    evidence: {path: docflow/io/ftp/client.go, locator: 'Conn：AUTH TLS / 暗黙の TLS / 平文、PBSZ 0・PROT P、FEAT、OPTS UTF8 ON、TYPE I、EPSV（無ければ PASV。告げられたアドレスは無視）、MLSD か NLST + SIZE + MDTM、MLST か SIZE/MDTM/CWD の Stat、STOR・RETR・RNFR/RNTO・DELE・MKD。データ接続は ClientSessionCache を共有して TLS セッションを再利用。server_test.go の偽サーバー（dataResumed を数える）'}
+acceptance:
+  f1-sftp-out:
+    text: endpoint → sftp の流れで、偽の SFTP サーバー（x/crypto/ssh）のパスに差し込んだ名前でファイルが届き、途中の名前は .part、最終の名前は rename で現れる。2 度目の送り（結果不明の再試行）は上げ直さずに done。パスワードと秘密鍵の両方の資格で通る。違うホスト鍵は失敗（再試行せず最終）
+    verified_by: [io-tests]
+  f2-ftp-out:
+    text: 偽の FTP サーバーに AUTH TLS + PROT P で届く（データ接続は TLS セッションの再利用）。tls=none の平文も通る。AUTH TLS の無いサーバーに explicit は失敗。ftps:// は暗黙の TLS。mkdirs で親のディレクトリができる
+    verified_by: [io-tests]
+  f3-poll:
+    text: 偽のサーバーに置いた 3 つのファイルを sftp-poll / ftp-poll が Tick で取り、pattern に合うものだけがジョブになり（$source・<kind>.path・名前・大きさ・更新時刻がメタデータに）、after=delete で消え、after=move で done_dir に移る。settle の間に大きさの変わったファイルと .part の名前は取らない。max_per_tick を超える分は次の tick。every の間は見回らない
+    verified_by: [io-tests]
+  f4-claim:
+    text: 2 つの Manager が同じサーバーを同時に見回っても、1 つのファイルは 1 つのジョブにしかならない（rename の取り置き）。取り置きの後に落ちたファイルは次の tick で同じノードが拾い直す
+    verified_by: [io-tests]
+  f5-hostkey:
+    text: 'POST /api/kinds/sftp/discover が相手のホスト鍵（OpenSSH の 1 行と SHA256: の指紋）を返し、エディタの「取得」で host_key の欄に入る。host_key の無い sftp のノードは PUT で断る'
+    verified_by: [io-tests, editor]
+  f6-secrets:
+    text: URL にパスワードを書いたノードは PUT で 400。資格の値はログ・API の応答・TickReport に出ない。MaxDocument を超えるファイルは取らずに TickReport に名前だけ出る
+    verified_by: [io-tests]
+  f7-editor-manual:
+    text: パレットの Source に ftp-poll・sftp-poll、Sink に ftp・sftp がアイコンつきで並び、Fields の欄（tls=none で注意の文）で保存できる。/help/nodes に 4 つの章（en・ja）
+    verified_by: [editor]
+  f8-real:
+    text: macOS の sftp-server（OpenSSH）と Docker の vsftpd（TLS）に手で送って届き、置いたファイルを見回りで取り戻せる
+    verified_by: [manual-real]
+verification:
+  io-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/... ./cmd/docflow/...（偽の SFTP / FTP サーバーは同じプロセスの中）と examples/docflow-custom の go test ./...
+    authority: observed
+    evidence:
+      path: docflow/io/sftp/sftp_test.go
+      locator: '2026-10-27 macOS：sftp の TestSFTPOut・TestSFTPAuth・TestSFTPDiscover・TestSFTPPoll・TestSFTPPollMove・TestClientFake・TestClientOpenSSH、ftp の TestFTPOut（TLS セッションの再利用を確かめる）・TestFTPTLS・TestFTPPoll・TestFTPSettings、transfer の TestParseURL・TestCheckPoll。docflow 全体（229 s）、docflow/web、web/help（TestLinks：章を nodes.md に移してから通る）、examples/docflow-custom も通った'
+  editor:
+    state: passed
+    method: manual
+    test: examples/docflow-custom の pw dev の /topology（Ada Admin）：パレットの Source に FTP（見回り）・SFTP（見回り）、Sink に FTP・SFTP。sftp を置いて URL を入れ「サーバーに聞く」で host_key が埋まる
+    authority: observed
+    evidence: {path: docflow/web/public/topology.js, locator: 'discoverField。2026-10-27 内蔵ブラウザで確認（下の facts.editor_check）'}
+  manual-real:
+    state: passed
+    method: integration
+    test: 実物：TestClientOpenSSH（macOS の /usr/libexec/sftp-server、stdio）、TestSFTPReal（Docker の OpenSSH 9.9 sshd + internal-sftp、docflow/io/sftp/testdata/sshd）、TestFTPReal（Docker の Alpine vsftpd 3.0.5、AUTH TLS・require_ssl_reuse=YES・MLSD なし、docflow/io/ftp/testdata/vsftpd）。環境変数で有効になる試験（無ければ skip）
+    authority: observed
+    evidence:
+      path: docflow/io/ftp/real_test.go
+      locator: '2026-10-27 macOS（arm64 の Docker）：出口は .part に STOR → RNTO、見回りは NLST + SIZE/MDTM → RNTO で取り置き → RETR → done へ RNTO。vsftpd のログで確認。1 回目の見回りは settle で残し（サーバーの時計は試験の時計と違う）、1 分後の 2 回目で取る'
+facts:
+  plan:
+    steps:
+    - 'docflow/io/sftp/protocol：x/crypto/ssh の上の SFTP v3 クライアント（OPEN・WRITE・READ・CLOSE・RENAME・MKDIR・OPENDIR・READDIR・STAT・REMOVE、posix-rename@openssh.com）と、試験用の最小のサーバー'
+    - 'docflow/io/ftp/protocol：FTP(S) クライアント（RFC 959・2428・3659・4217、TLS セッションの再利用）と、試験用の最小のサーバー'
+    - 'docflow：Kind.Tick と、ノードの状態（最後に見回った時刻）。Tick がノードを回る'
+    - '種類の登録：ftp・sftp（RoleExit、Send）、ftp-poll・sftp-poll（RoleEntry、PassesOn、Tick）、Fields、Discover（sftp のホスト鍵）、Doc（en・ja）'
+    - 'cmd/docflow/handlers の blank import、エディタの注意の文（tls=none）、マニュアルの章、examples/docflow-custom の確認'
+    - '実物の確認（macOS の sftp-server、Docker の vsftpd）'
+    size: 'Claude の見積り：SFTP のクライアント 600〜800 行、FTP のクライアント 500〜700 行、試験用のサーバー 2 つで 600 行、種類と tick で 500 行'
+  implementation:
+    packages: 'docflow/io/transfer（FS・Site・ParseURL・ExitFields/PollFields・Send・Poll・MkdirAll）、docflow/io/sftp（client.go・ssh.go・sftp.go）、docflow/io/ftp（client.go・ftp.go）。docflow/io/all が両方を import。芯は kind.go の Kind.Tick、send.go の Tick のループと TickReport（Ticked・Polled・Notes）、kindstate.go（KindState・PutKindState、kind-states、64 KiB まで）、nodes.go の DeleteNode が dropKindState'
+    decided_while_building:
+    - 'ジョブの $source は種類の名（sftp-poll・ftp-poll。s3-trigger と同じ流儀）、メタデータの鍵は sftp.path・sftp.size・sftp.time（mtime ではなく time）、名乗りのユーザー（ClaimedUser）はログインの名、By は nil（鍵でもアプリでもない）'
+    - 'max_per_tick は「試した数」を数える（refused も 1 回。仕事の上限だから）。Polled は取れた数'
+    - 'settle：更新が settle より新しいファイルは残すが、前回の見回りと大きさ・時刻が同じなら取る（Seen を KindState に。2000 件まで）。サーバーの時計が進んでいても 1 回遅れで取れる'
+    - 'done_dir と path の .. は落とす（CleanPath。URL のディレクトリの外に出ない）。done_dir は絶対パスでも書ける'
+    - 'refused（ErrFormat・ErrInvalid・Refusal）は <name>.docflow-<node>.refused に改名して残し、ログに Warn、TickReport に Note。取り込みの途中の失敗（保存など）は取り置きのまま残して次の tick で同じノードが拾い直す'
+    - 'SFTP の rename で replace は posix-rename@openssh.com が無ければ先に REMOVE（原子的でない）。見回りの取り置きは replace なしの RENAME（相手にあれば失敗 → 他のインスタンスのもの）'
+    - 'FTP の Rename は replace なしのとき先に Stat で見る（FTP の RNTO は上書きする）。550 は fs.ErrNotExist 扱い（無いのと権限なしを区別できない）'
+    - 'FTP の TLS：ClientSessionCache を共有し、データ接続が制御接続のセッションを再利用する（vsftpd の require_ssl_reuse=YES で実証）。自己署名は tls_fingerprint（SHA-256、hex）で留める'
+    - 'ctx の打ち切り：Dial が goroutine で ctx.Done を見て TCP を閉じる（SSH は tcp、FTP は tcp とデータ接続）'
+    - 'Kind.Doc は使わず、4 つの章を help/{en,ja}/nodes.md に書いた（web/help の TestLinks は静的な見出ししか見ない。他のアダプタと同じ置き場）。entries.md に「FTP と SFTP（見回り）」の節'
+    - 'エディタ：Fields の種類で discovers のものに「サーバーに聞く」（discoverField）。POST /api/kinds/<kind>/discover に settings を送り、答えの同名の欄を埋めて表示する。ja.js に 4 つの文'
+    known_gaps:
+    - 'SFTP の READ/WRITE は 16 × 32 KiB の窓の逐次 pipeline（送って集める）。WAN の大きなファイルは遅いかもしれない（未計測）'
+    - 'FTP の能動モード・ASCII・REST・SITE は無い（non_goals）。MLSD の無いサーバーは名前ごとに SIZE と MDTM を聞く（ファイルの数だけ往復）'
+    - 'known_hosts・SSH agent・暗号化された鍵は無い。ホスト鍵はノードごとに留めるだけ'
+    - 'サーバーの時計が manager より進んでいる相手では、ファイルは 1 回の見回り分遅れて取られる'
+    - 'Alpine の vsftpd（arm64 の Docker）は 1 セッションの後に親が 139 で落ちることがあり、testdata の README は再起動のループで動かす（docflow 側の問題ではない）'
+  editor_check:
+    date: '2026-10-27'
+    how: examples/docflow-custom を pw dev で起動し、内蔵ブラウザで /topology（Ada Admin で署名）
+    seen: 'パレット：ソースに「FTP（見回り）」「SFTP（見回り）」、シンクに「FTP」「SFTP」がアイコンつき（凡例にも）。SFTP を置くとサイドバーに Fields の欄（URL・資格・ホスト鍵が必須の印、パス・ディレクトリを作る・上書き、TLS の欄は無い）と「サーバーから：サーバーに聞く」。URL に Docker の sshd（sftp://tester@127.0.0.1:2222/~/in）を入れて押すと、type・host_key・fingerprint（SHA256:W/OxQ5…）が表示され host_key の欄が埋まる。資格の名を入れて「追加」→ トースト「sftp-out を保存しました」、GET /api/nodes/sftp-out の settings に url・credential・host_key・mkdirs=true・overwrite=false。/help/ja/nodes に sftp・ftp・sftp-poll・ftp-poll の章。確認後にノードは消した'
+relations:
+- relation: refines
+  to: requirement:docflow-file-transfer
+- relation: builds_on
+  to: milestone:fl-2
+- relation: builds_on
+  to: milestone:fw-1

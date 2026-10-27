@@ -1,0 +1,98 @@
+id: survey:transfer-protocols
+type: survey
+title: Docflow の入出力に足す転送プロトコルの調査（2026-10-27）— FTP / SFTP の次は WebDAV、SMB と NFS はマウント + folder、EDI 級は保留
+summary: >-
+  2026-10-27 利用者の問い「他に対応すべき転送プロトコルはありますか？ hulft はプロプライエタリなのでなしでよいかと」への Claude の答え。
+  Web 検索 3 回（全銀協の手順の終了、流通 BMS の 3 手順、企業間転送の比較）と Claude の知識（2026-06 まで）から。一次資料で確かめて
+  いない項目は facts.unverified に。結論：FTP（FTPS 含む）と SFTP の次に足すなら WebDAV（HTTP の上、依存なし、Nextcloud・SharePoint・
+  NAS・複合機の宛先）。SMB と NFS はホストでマウントして folder の種類で書く。AS2・AS4・ebXML MS・JX 手順・全銀協の手順は EDI 級で
+  具体的な取引先が決まるまで保留。HULFT・JP1 などプロプライエタリは入れない（利用者）。SCP は SFTP で足りる（利用者が無しと決めた）。
+lifecycle: active
+authority: inferred
+aliases:
+- transfer protocols survey
+- 転送プロトコルの調査
+- WebDAV
+- SMB
+- CIFS
+- NFS
+- AS2
+- AS4
+- ebXML MS
+- JX手順
+- 全銀協標準通信プロトコル
+- 全銀TCP/IP手順
+- 流通BMS
+- OFTP2
+- Azure Blob
+- GCS
+- rsync
+- MFT
+- managed file transfer
+facts:
+  verdicts:
+    ftps:
+      verdict: FTP に含める
+      reason: RFC 4217 の明示的 TLS は FTP の延長で、実務の FTP はほぼこれ。暗黙の TLS（990）も scheme で
+    scp:
+      verdict: 入れない（2026-10-27 利用者）
+      reason: OpenSSH 9.0（2022）以降の scp は転送に SFTP を使う。SFTP があれば SCP の相手にも届く
+    webdav:
+      verdict: 次の候補
+      reason: Nextcloud・ownCloud・SharePoint・Box・NAS・複合機のスキャン先に広い。HTTP の上（PUT・MKCOL・MOVE・PROPFIND）なので出口は http の種類に 2 命令、入口は PROPFIND の見回り。Basic・Bearer・TLS は今の部品。新しい依存なし
+    smb:
+      verdict: 種類は作らず、マウント + folder
+      reason: 日本の事務所のファイルサーバーと複合機の「スキャン to SMB」の既定。純 Go の SMB2 クライアント（github.com/hirochachacha/go-smb2。NTLMv2、Kerberos なし）はあるが、ホストでマウントして雛形の folder で書けばコードが要らない。コンテナ・サーバーレスでマウントできない場面が出たら go-smb2 を考える
+    nfs:
+      verdict: マウント + folder
+      reason: SMB と同じ
+    as2:
+      verdict: 保留
+      reason: EDIINT AS2（RFC 4130）。小売・製薬・自動車の B2B EDI、流通 BMS も規定、GS1。S/MIME の署名と暗号、MDN の受領（否認防止）、証明書と取引先の台帳が要る大きな部品。具体的な取引先が現れたら
+    as4_ebms_jx:
+      verdict: 保留
+      reason: ebXML MS 2.0 と JX 手順は流通 BMS の手順（JX は小売のサーバーへ取りに行く SOAP-RPC、ebMS と AS2 は常時のサーバー。中身の XML は 3 手順で共通）。AS4 は EU の e-delivery（Peppol）。業界のメッセージの扱いと一緒でないと意味がない
+    zengin:
+      verdict: 入れない（HULFT と同じ扱い）
+      reason: 全銀協標準通信プロトコルのベーシック手順（1983）と旧 TCP/IP 手順（1997）は PSTN 廃止に伴い 2023 年 12 月末でサポート終了、広域 IP 網版（2017 年制定）が残る。仕様の入手と製品が前提の金融向け
+    proprietary:
+      verdict: 入れない（2026-10-27 利用者）
+      reason: HULFT（NEC）、JP1、EDI-Master、Biware など
+    rsync:
+      verdict: 入れない
+      reason: プロトコルが実装の仕様。ssh + rsync は道具で、ノードにしない
+    azure_blob:
+      verdict: Azure の配備が出たら
+      reason: S3 と API が違う（SharedKey か SAS）。自前の PUT で書けるが別の種類
+    gcs:
+      verdict: s3 の種類で届くはず（未確認）
+      reason: 'GCS の XML API は S3 互換（HMAC 鍵、path-style の endpoint）。If-None-Match: * の PUT が通るかは未確認（facts.unverified）'
+    imap:
+      verdict: 別の要件
+      reason: 転送プロトコルではないが、複合機の「スキャン to メール」と取引先のメール添付は入口として多い。requirement:document-flow の inputs.smtp_receive のまま後
+    mq:
+      verdict: 範囲外
+      reason: AMQP・Kafka・MQTT はファイル転送ではない。トリガーの入口として別に
+    oftp2:
+      verdict: 保留
+      reason: Odette（欧州の自動車）。日本の配備で出たことがない
+  conclusion: FTP / SFTP の次は WebDAV。SMB・NFS はマウント + folder。EDI 級（AS2・AS4・ebMS・JX・全銀）は具体的な相手が決まるまで保留。Docflow 自身が FTP / SFTP のサーバーになる形（スキャン to FTP）は requirement:docflow-file-transfer の open_questions.server-mode
+  mft_context: 企業間転送の製品（Kiteworks、IBM Sterling、Axway SecureTransport、GoAnywhere MFT）は AS2・SFTP・FTPS を標準で持ち、差はガバナンスと監査（Kiteworks の比較記事）。HULFT 8.1（2015）は FTP / SFTP サーバーとの送受信を足している。Docflow の archive・トレースはその「監査」の側
+  unverified:
+  - 'GCS の XML API で s3 の種類の If-None-Match: * の PUT が通るか'
+  - 流通 BMS の 3 手順の最新の採用の割合（協議会の公式資料は見ていない）
+  - 全銀協の広域 IP 網版の 2026 年の運用（検索は 2023 年末の終了までしか出なかった）
+  - 複合機（リコー・キヤノン・富士フイルム）のスキャン先に SFTP・WebDAV がどこまで標準か（Claude の知識）
+  sources:
+  - https://www.zenginkyo.or.jp/news/2017/n8828/
+  - https://www.mizuhobank.co.jp/corporate/oshirase/isdn/index.html
+  - https://it-trend.jp/edi/article/80-0016
+  - https://www.issoh.co.jp/tech/details/18634/
+  - https://www.kiteworks.com/ja/managed-file-transfer/managed-file-transfer-tools-comparison-2/
+  - https://www.progress.com/jp/blogs/as2-vs-sftp-which-is-best-for-you
+  - https://jpn.nec.com/hulft/product_hulft_top.html
+relations:
+- relation: informs
+  to: requirement:docflow-file-transfer
+- relation: mentions
+  to: requirement:document-flow

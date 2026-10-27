@@ -128,6 +128,7 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[personRecord]("people"),
 		db.Bind[appRecord]("apps"),
 		db.Bind[stateRecord]("states"),
+		db.Bind[kindState]("kind-states"),
 		db.Bind[downloadEntryRecord]("download-entries"),
 		db.Bind[downloadList]("download-lists"),
 	} {

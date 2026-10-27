@@ -132,9 +132,10 @@ capabilities:
     about: capability:docflow/custom-routers
     scope: {milestone: fw-4}
   kind-collections-tickers:
-    state: planned
+    state: partial
     about: capability:docflow/kind-collections-tickers
     scope: {milestone: fw-4}
+    evidence: {path: docflow/kind.go, locator: 'tick の方は milestone:fl-4a（2026-10-27）で前に出た：Kind.Tick と、ノードごとの小さな状態 KindState/PutKindState（kind-states、64 KiB まで）。種類が自分のコレクションを持つ口はまだ無い'}
 facts:
   request:
     text: >-

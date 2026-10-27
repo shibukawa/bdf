@@ -53,6 +53,10 @@ The printer answers as AirPrint, IPP Everywhere and Mopria printers do (PDF pref
 
 On its port a job may come in two requests, as IPP Everywhere asks and as those clients send: Create-Job, which tells the job's number, then Send-Document with the document (one a job; one whose document does not come within 5 minutes is aborted). The manager's own server (`/ipp/print/<name>`) takes a job in one request alone (Print-Job), so that no instance waits for a document. A document goes on whole: the clients pick the pages they send, and `page-ranges` is not taken.
 
+## FTP and SFTP (poll) {#poll}
+
+An [FTP (poll)](nodes.md#ftp-poll) or [SFTP (poll)](nodes.md#sftp-poll) node is for the systems that put files on a server rather than call an API: an EDI partner's outbox, a batch export, a scanner that writes to a directory served over SFTP. The node does not listen: at every tick (`POST /api/tick`, the scheduler's, or the process's timer), no more often than its **Every**, it lists the directory, claims a file by renaming it (`<name>.docflow-<node>.taking`), takes it in as an uploader would (the entry's accept, output and formats apply; the file's path, size and time go in the metadata), and deletes it or moves it to a done directory. The other way, to a server, is the [FTP](nodes.md#ftp) and [SFTP](nodes.md#sftp) exits. Docflow is no FTP or SFTP server itself: a sender that can only push goes to a server of its own, which a poll node looks at.
+
 ## Apps {#apps}
 
 An app is an application that sends, works inboxes or reads downloaders with credentials of its own rather than an uploader's key: the credentials are the app's, and the audit log and the jobs say which app sent. An administrator registers one on Admin → Apps: an id, a title, the group whose members see its jobs (optional), and its scopes:

@@ -1399,6 +1399,7 @@ function settingsForm(n) {
       form.append(appsField(n, _("Apps send here with their token (POST /oauth/token), within their scopes; the uploader's own key works as well.")));
     }
     fieldsForm(form, n, own);
+    if (own.discovers) form.append(discoverField(form, own));
   }
   switch (kind) {
     case "upload": {
@@ -1640,6 +1641,38 @@ function fieldsForm(form, n, own) {
   refresh();
   form.addEventListener("input", refresh);
   form.addEventListener("change", refresh);
+}
+
+// discoverField is the button that asks the far side of the settings
+// typed what is there, for a kind of its own that discovers (POST
+// /api/kinds/<kind>/discover with the settings): what it answers fills
+// the fields of the same keys (an SFTP server's host key) and is shown
+// under the button, for the administrator to look at before saving.
+function discoverField(form, own) {
+  const ask = el("button", _("Ask the server"), { type: "button", className: "btn btn-sm w-fit" });
+  const out = el("div", undefined, { className: "text-xs text-base-content/60 whitespace-pre-wrap break-all" });
+  ask.addEventListener("click", async () => {
+    out.textContent = _("Asking the server …");
+    try {
+      const got = await api("POST", `/api/kinds/${own.name}/discover`, { settings: settingsFormOf(form, true) });
+      const lines = [];
+      for (const [k, v] of Object.entries(got && typeof got === "object" ? got : {})) {
+        const text = typeof v === "object" ? JSON.stringify(v) : String(v);
+        const box = form.querySelector(`[data-field="${k}"]`);
+        if (box && box.dataset.type !== "bool" && box.dataset.type !== "json") {
+          box.value = text;
+          box.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        lines.push(`${k}: ${text}`);
+      }
+      out.textContent = lines.join("\n") || _("The server answered nothing.");
+    } catch (err) {
+      out.textContent = String((err && err.message) || err);
+    }
+  });
+  const box = el("div", undefined, { className: "flex flex-col gap-1" });
+  box.append(ask, out);
+  return field(_("From the server"), box, _("What the server answers fills the fields of the same names (an SFTP server's host key): look at it before saving."));
 }
 
 // settingsFormOf reads the fields of a kind's own settings from its

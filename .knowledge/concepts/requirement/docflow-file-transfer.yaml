@@ -1,0 +1,191 @@
+id: requirement:docflow-file-transfer
+type: requirement
+title: Docflow の FTP / SFTP — 出口（ftp・sftp）と見回りの入口（ftp-poll・sftp-poll）。SCP と HULFT は入れない
+summary: >-
+  2026-10-27 利用者「ftp, sftp で scp なしでお願いします。/knowledge-memory で要件整理をお願いします。他に対応すべき転送プロトコルは
+  ありますか？ hulft はプロプライエタリなのでなしでよいかと」。Docflow は FTP・SFTP・SCP のどれにも対応していなかった（docflow/io は
+  http・smtp・s3・ipp・notify、go.mod に ssh・ftp の部品なし、ftp は fl-1・fl-2 の non_goals で fl-4 送り）。入れるのは FTP（FTPS の
+  明示的 TLS を含む。Claude の読み）と SFTP。出口は folder の雛形の遠隔版（一時名に上げて rename、あるものは書いた扱い）、入口は
+  相手のサーバーを Tick で見回る（rename で取り置き → 読む → 消すか移す。Claude の推奨、答え待ち）。部品は x/crypto/ssh（既にある）の上の
+  自前の SFTP クライアントと、stdlib の上の自前の FTP(S) クライアント（依存 0。Claude の推奨）。設定は fw-1 の Node.Settings + Kind.Fields。
+  叙述は knowledge-inputs/print-plan/docflow-file-transfer.ja.md。他の転送プロトコルの調査は survey:transfer-protocols（次は WebDAV、
+  SMB・NFS はマウント + folder、EDI 級は保留）。同日、利用者「暫定の選択（入口は Tick の見回り、ftp と sftp の 2 種類、自前の
+  クライアント、AUTH TLS を要求、取ったら消す）のまま milestone:fl-4a を実装してください」で 5 つの問いが決まり、fl-4a を実装した
+  （docflow/io/transfer・sftp・ftp、Kind.Tick と KindState。偽のサーバーの試験と、OpenSSH の sftp-server・sshd、vsftpd の実物で確認）。
+lifecycle: active
+authority: authored
+aliases:
+- FTP
+- FTPS
+- SFTP
+- ftp node
+- sftp node
+- ftp-poll
+- sftp-poll
+- file transfer
+- ファイル転送
+- 転送プロトコル
+- transfer protocol
+- 見回り
+- polling entry
+- host key
+- ホスト鍵
+- SCP
+- HULFT
+- AUTH TLS
+- RFC 4217
+- posix-rename
+constraints:
+- 入れるのは FTP（平文と FTPS の明示的 TLS、ftps:// の暗黙の TLS）と SFTP（SSH の上の version 3）。SCP は入れない（2026-10-27 利用者）。HULFT などプロプライエタリの手順は入れない（同）
+- 出口は at-least-once の delivery（fl-2 の制約のまま）：一時名 .<delivery の ID>.part に上げてから最終の名前へ rename（FTP は RNFR/RNTO、SFTP は SSH_FXP_RENAME か posix-rename@openssh.com）。再試行は、最終の名前があれば done（overwrite が無ければ）、無ければ上げ直す
+- 入口は 2 つのインスタンスが同じファイルを取らない：読む前に rename で取り置く（<name>.docflow-<node>.taking）。rename に負けたら飛ばす。取り置きのまま残ったものは同じノードが次の tick で拾い直す
+- 入口は常駐に頼らない（pm-1）：見回りは Tick の中（POST /api/tick かプロセスのタイマー）。ノードの every を守るため、最後に見回った時刻をノードの状態（Store.PutState）に置く
+- 資格は名前で指し、値は環境変数かファイル（requirement:print-manager-auth・fl-2 の制約のまま）。URL にパスワードを書いたノードは PUT で断る。SFTP の秘密鍵は PEM をファイルの資格に置く（暗号化された鍵は当面断る）。値はログ・API・TickReport に出さない
+- SFTP のホスト鍵は必ず留める（host_key）。鍵の検証を外す設定は作らない。Kind.Discover が接続して鍵を取ってくるので、エディタで見てから保存する
+- FTP は受動（EPSV、無ければ PASV）とバイナリ（TYPE I）だけ。FTPS のデータ接続は制御接続の TLS セッションを再利用する
+- パスの差し込みは {{meta.<key>}} だけ（式言語なし）。.. と頭の / は落とす（ExpandPath）
+- 入口の MaxDocument（http.go・ipp.go と同じ上限）を超えるファイルは取らずに TickReport に出す
+- 新しい種類の設定は Node.Settings + Kind.Fields（fw-1）。平らな Node の欄（url・credential・path）は使わない
+- 各社の SDK を入れない方針のまま：SSH は golang.org/x/crypto/ssh（既に go.mod にある）、SFTP と FTP のクライアントは自前（Claude の推奨。open_questions.libraries）
+non_goals:
+- SCP（2026-10-27 利用者。OpenSSH 9.0 以降の scp は中身が SFTP）
+- HULFT・JP1・EDI-Master などプロプライエタリの転送（同）
+- Docflow 自身が FTP / SFTP のサーバーになること（open_questions.server-mode。別の口が要る）
+- FTP の能動モード（PORT/EPRT。入りのポートが要る）、ASCII モード、FXP、REST による再開、SITE の命令
+- SSH の agent・証明書・GSSAPI、暗号化された秘密鍵、known_hosts のファイル（後。ノードごとの host_key で足りる）
+- 入口の「取ったものを覚えて残す」（keep。名前と更新時刻の記録が要る。delete か move だけ）
+- 取ったファイルの順序の保証（名前順に取るだけ）
+- WebDAV・SMB・AS2 などの他の手順（survey:transfer-protocols の判定のとおり別に）
+capabilities:
+  ftp-exit:
+    state: implemented
+    about: capability:docflow/ftp-exit
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.ftp-exit}
+  sftp-exit:
+    state: implemented
+    about: capability:docflow/sftp-exit
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.sftp-exit}
+  ftp-poll-entry:
+    state: implemented
+    about: capability:docflow/ftp-poll-entry
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.ftp-poll-entry}
+  sftp-poll-entry:
+    state: implemented
+    about: capability:docflow/sftp-poll-entry
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.sftp-poll-entry}
+  kind-tick:
+    state: implemented
+    about: capability:docflow/kind-tick
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.kind-tick}
+  host-key-discover:
+    state: implemented
+    about: capability:docflow/host-key-discover
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.host-key-discover}
+  sftp-client:
+    state: implemented
+    about: capability:docflow/sftp-client
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.sftp-client}
+  ftp-client:
+    state: implemented
+    about: capability:docflow/ftp-client
+    scope: {milestone: fl-4a}
+    evidence: {path: .knowledge/concepts/milestone/fl-4a.yaml, locator: capabilities.ftp-client}
+  server-mode:
+    state: absent
+    about: capability:docflow/transfer-server-mode
+open_questions:
+  entry-shape:
+    text: 入口の形。A. 相手のサーバーを Tick で見回る／B. Docflow 自身が FTP / SFTP のサーバーになる（スキャン to FTP、押すしかできない送り手）／C. 両方
+    state: answered
+    resolution: A（Tick の見回り）。2026-10-23 の Claude の暫定を 2026-10-27 利用者が「暫定の選択のまま実装」で決めた。B は server-mode に deferred のまま
+  server-mode:
+    text: Docflow 自身が FTP / SFTP のサーバーになる形を作るか。複合機の「スキャン to FTP / SFTP」と、押すしかできない古い送り手のため
+    state: deferred
+    resolution: 生の TCP の Listen の口（Kind.Serve は http.Handler だけ）、FTP の受動のポートの範囲、SSH のホスト鍵の持ち物が要る。requirement:docflow-framework の custom-ports と一緒に。引き金は、押す形でしか送れない送り手（複合機・古い基幹）を Docflow の入口にしたい具体的な場面
+  kinds-count:
+    text: 種類の数。A. ftp（ftp:// と ftps://）と sftp の 2 つ／B. URL の scheme で分ける 1 つ
+    state: answered
+    resolution: A（ftp と sftp の 2 つ、見回りは ftp-poll と sftp-poll）。2026-10-27 利用者が暫定のまま決めた
+  libraries:
+    text: 部品。A. 自前のクライアント（stdlib + x/crypto/ssh。依存 0）／B. github.com/jlaffaye/ftp + github.com/pkg/sftp
+    state: answered
+    resolution: A（自前。SFTP v3 は docflow/io/sftp/client.go を x/crypto/ssh の上に、FTP(S) は docflow/io/ftp/client.go を net と crypto/tls の上に。依存は増えていない）。2026-10-27 利用者が暫定のまま決めた
+  ftp-tls-default:
+    text: FTP の TLS の既定。A. AUTH TLS を要求し、平文はノードごとの opt-in（tls=none）／B. あれば使う（日和見）
+    state: answered
+    resolution: A（tls=explicit が既定で AUTH TLS の無いサーバーは最終の失敗、tls=none はノードごとの opt-in）。2026-10-27 利用者が暫定のまま決めた
+  after-take:
+    text: 入口で取ったファイルの後始末の既定。A. 消す／B. done へ移す
+    state: answered
+    resolution: A（after=delete が既定、move は done_dir で）。2026-10-27 利用者が暫定のまま決めた
+  connections-catalog:
+    text: fw-2 の接続先カタログ（connections）に FTP / SFTP の接続先（url・credential・host_key）を載せ、ノードは pulldown で選ぶか
+    state: deferred
+    resolution: fw-2 が来たら。fl-4a はノードの欄に直に書く
+facts:
+  request:
+    source: 2026-10-27 利用者
+    points:
+    - ftp と sftp。scp は無し
+    - /knowledge-memory で要件整理
+    - 他に対応すべき転送プロトコルは？（答えは survey:transfer-protocols）
+    - HULFT はプロプライエタリなので無しでよい
+  current_state:
+    source: 2026-10-27 コードで確かめた（v0.2.0 の後、ブランチ claude/docflow-protocol-support-b05d07）
+    entries: upload（HTTP の API）、cups（IPP、自分のポート）、s3-trigger（外からの POST）
+    exits: http（push）、smtp、s3、cups-out、printer、download（取りに来る）、雛形の folder（サーバーのディレクトリ）
+    hooks: Kind.Send（delivery）、Keyed + Fetch（参照を受けて読む）、Serve（自分のポートの http.Handler）、Discover（相手に聞く）。種類ごとの Tick の口は無い（fw-4 の kind-collections-tickers）
+    deps: golang.org/x/crypto v0.58.0 はある。sftp・ftp の部品は無い
+  design:
+    exit:
+      kinds: ftp（ftp://・ftps://）と sftp（sftp://）。入力は any の多相
+      url: 'ftp://user@host:21/base、ftps://user@host:990/base（暗黙の TLS）、sftp://user@host:22/base。ユーザー名は URL、パスワードは入れない'
+      credential: FTP はパスワード。SFTP はパスワードか PEM の秘密鍵（-----BEGIN で見分ける。ファイルの資格に）
+      host_key: 'sftp だけ、必須。OpenSSH の公開鍵の 1 行か SHA256: の指紋。Discover が取ってくる'
+      tls: 'ftp だけ：explicit（既定。AUTH TLS + PROT P、無ければ失敗）、none（平文。エディタに注意）。自己署名は tls_fingerprint（証明書の SHA-256）で留める'
+      path: '{{meta.<key>}} を展開。既定 {{meta.$job}}/{{meta.$name}}。mkdirs（既定 on）、overwrite（既定 off）'
+      send: 一時名 .<delivery>.part → rename。result は置いたパス
+    entry:
+      kinds: ftp-poll と sftp-poll（RoleEntry、PassesOn。upload と同じ入口の欄 accept・output・formats・meta）
+      settings: 'url・credential・host_key・tls・tls_fingerprint は出口と同じ。pattern（glob、既定 *）、every（既定 1m）、after（delete（既定）か move + done_dir）、settle（既定 10s。大きさか更新時刻が変わったものと .part・.tmp・.filepart は次へ）、max_per_tick（既定 20）'
+      take: 'rename で取り置き（<name>.docflow-<node>.taking）→ 読む（MaxDocument 超は取らず TickReport へ）→ ジョブに（$source = ftp / sftp、ftp.path / sftp.path・名前・大きさ・更新時刻をメタデータに）→ after のとおり消すか移す'
+      tick: Kind.Tick(ctx, m, n, rep)。fw-4 の kind-collections-tickers の tick の方だけ前に出す。最後に見回った時刻は Store.PutState
+    implementation:
+      sftp: x/crypto/ssh の上に自前の SFTP v3（draft-ietf-secsh-filexfer-02：OPEN・WRITE・READ・CLOSE・RENAME・MKDIR・OPENDIR・READDIR・STAT・REMOVE、posix-rename@openssh.com）。代案 github.com/pkg/sftp（BSD-2）
+      ftp: 'net + crypto/tls の上に自前：RFC 959、2428（EPSV）、3659（MLSD・SIZE・MDTM）、4217（AUTH TLS、PROT P）。データ接続は ClientSessionCache を共有して TLS セッションを再利用。代案 github.com/jlaffaye/ftp（MIT）'
+      packages: docflow/io/ftp と docflow/io/sftp（init で登録。cmd/docflow/handlers が blank import）
+      tests: 同じプロセスの偽のサーバー（SFTP は x/crypto/ssh のサーバー + 最小の SFTP サーバー、FTP は最小の FTP サーバー、TLS あり）。実物は macOS の sftp-server と Docker の vsftpd / pure-ftpd で手で
+  delivery:
+    current_milestone: fl-4a
+    outcome: ftp・sftp の出口と ftp-poll・sftp-poll の入口が、偽のサーバーの試験と実物の確認で通る。エディタの欄とマニュアルの章がある
+    state: 2026-10-27 実装済み（milestone:fl-4a の verification）。未コミット
+    later: WebDAV、サーバーの形（server-mode）、known_hosts、fw-2 の接続先カタログ、fl-4 の残り（人の操作・人の入力・split・dedupe・流量）
+    decisions:
+      server-mode:
+        reason: 入口の見回りで EDI・バッチの受け取りは足りる。サーバーの形は別の口（生の Listen・ポートの範囲・ホスト鍵の持ち物）が要り、この段の出口と入口を変えない
+        revisit_when: 押す形でしか送れない送り手（複合機のスキャン to FTP、古い基幹）を Docflow の入口にしたい場面。framework の custom-ports を作るとき
+        evidence_needed: その送り手が SFTP / FTP のどちらで、受動のポートが開けられる配備か
+        provisional_choice: 見回りだけ
+        change_boundary: クライアントの部品（docflow/io/ftp・sftp の protocol 層）はサーバーの形でも使う。ノードの設定は入口の欄のまま
+relations:
+- relation: refines
+  to: requirement:document-flow
+- relation: refines
+  to: requirement:docflow
+- relation: builds_on
+  to: milestone:fl-2
+- relation: builds_on
+  to: milestone:fw-1
+- relation: builds_on
+  to: requirement:docflow-framework
+- relation: constrained_by
+  to: requirement:print-manager-auth
+- relation: informed_by
+  to: survey:transfer-protocols
