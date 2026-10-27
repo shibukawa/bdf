@@ -140,6 +140,24 @@ type TickReport struct {
 	Expired  int `json:"expired"`
 	Leased   int `json:"leased"`
 	Location int `json:"locations"`
+	// Ticked counts the nodes of the kinds with a tick of their own
+	// (Kind.Tick) ticked; Polled the files their entries took in as jobs.
+	Ticked int `json:"ticked"`
+	Polled int `json:"polled"`
+	// Notes are what a tick has to say besides the counts (a file an
+	// entry left on its far side, and why): maxNotes at most.
+	Notes []string `json:"notes,omitempty"`
+}
+
+// maxNotes bounds the notes of a tick.
+const maxNotes = 50
+
+// Note adds a note to the report (fmt.Sprintf's form), up to maxNotes;
+// the first ones stay.
+func (r *TickReport) Note(format string, args ...any) {
+	if len(r.Notes) < maxNotes {
+		r.Notes = append(r.Notes, fmt.Sprintf(format, args...))
+	}
 }
 
 // Tick does what is due: it sends the deliveries to printers and
@@ -170,6 +188,13 @@ func (m *Manager) Tick(ctx context.Context) (*TickReport, error) {
 		case KindInbox:
 			if err := m.tickInbox(ctx, &n, rep); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
+			}
+		default:
+			if k := kindNamed(n.Kind); k != nil && k.Tick != nil {
+				rep.Ticked++
+				if err := k.Tick(ctx, m, &n, rep); err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
+				}
 			}
 		}
 	}

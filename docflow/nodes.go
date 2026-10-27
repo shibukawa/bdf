@@ -289,6 +289,7 @@ func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 		return mapErr(err)
 	}
 	m.changed()
+	m.dropKindState(ctx, name)
 	switch rec.Data.Kind {
 	case KindTemplate:
 		return m.removeTemplatesOf(ctx, name)

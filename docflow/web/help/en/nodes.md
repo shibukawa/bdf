@@ -267,6 +267,48 @@ The kind `http`. Sends what reaches it to a web service in a request, the docume
 
 Render, Notify, Mail (SMTP), S3 and HTTP have no form of their own in the sidebar: their settings are a JSON box there. An S3 trigger has a form, as an uploader has.
 
+## SFTP {#sftp}
+
+The kind `sftp`. Uploads what reaches it to a directory of an SFTP server (SSH), under a path made of the job's metadata: to a temporary name (`.<delivery>.part`) first, renamed into place, so that a reader never sees half a file. A file at the final name already is taken as written by an earlier try, unless the node overwrites; a send is at least once. It takes any payload: `.bdf` as it is, or what a render node made.
+
+| Setting | |
+|---|---|
+| URL (`url`) | `sftp://user@host:22/dir`: the user in the URL, never the password; the directory absolute on the server, `/~/dir` under the user's own, none the user's own |
+| Credential (`credential`) | the user's password, or a PEM private key (a file in the credential directory, beginning with `-----BEGIN`; not encrypted) |
+| Host key (`host_key`) | the server's public key, pinned: **Ask the server** in the sidebar fetches it (`POST /api/kinds/sftp/discover`); compare its fingerprint with what the server's administrator says before saving. An OpenSSH line (`ssh-ed25519 AAAA…`) or a `SHA256:` fingerprint. There is no way around it |
+| Path (`path`) | with `{{meta.<key>}}`: `{{meta.$job}}/{{meta.$name}}` by default; a value cannot leave the directory |
+| Make directories (`mkdirs`) | make the directories of the path that are not there (on by default) |
+| Overwrite (`overwrite`) | write over a file that is there; off, it is left as written by an earlier try |
+
+## FTP {#ftp}
+
+The kind `ftp`. As the SFTP exit, to an FTP server. On `ftp://` the connection is made TLS with `AUTH TLS` before the password goes (FTPS; the data connections are TLS too, resuming the control connection's session as most servers require), `ftps://` is TLS from the start (port 990); a server without TLS is refused, unless the node says so. Transfers are binary, in passive mode (`EPSV`, else `PASV`; the address the server tells is ignored for its own).
+
+| Setting | |
+|---|---|
+| URL (`url`) | `ftp://user@host:21/dir` or `ftps://user@host:990/dir`, the directory as the SFTP exit's; no user is anonymous; never the password |
+| Credential (`credential`) | the user's password |
+| TLS (`tls`) | `explicit` (the default): `AUTH TLS`, and a server without it fails for good; `none`: everything in the clear, for an old device on the LAN only |
+| Certificate fingerprint (`tls_fingerprint`) | the SHA-256 of the server's certificate (hex), pinned instead of the system's roots: for a self-signed certificate |
+| Path, Make directories, Overwrite | as the SFTP exit's |
+
+## SFTP (poll) {#sftp-poll}
+
+The kind `sftp-poll`, an entry ([Where documents come in](entries.md#poll)). At every tick (`POST /api/tick`: the scheduler's, or the process's timer), no more often than **Every**, it lists a directory of an SFTP server and takes the files there whose names fit **Pattern** in as jobs, in order of name, up to **Files per tick** at once. A file is claimed first by renaming it (`<name>.docflow-<node>.taking`), so that two instances never take the same one, then read and sent on as an uploader sends (the entry's accept, output and formats apply; `sftp.path`, `sftp.size` and `sftp.time` go in the metadata, the login as the claimed user), then deleted, or moved to the done directory. A file changed more recently than **Settle** is left for the next look, unless it was seen the same at the last one, so that one still being written is not taken; names ending in `.part`, `.tmp` or `.filepart`, and those beginning with `.`, are never taken. A file the engine refuses for good (not a format it reads) is renamed `<name>.docflow-<node>.refused` and left for a person; a file larger than the manager takes is left as it is. What was left and why is in the tick's report (`notes`).
+
+| Setting | |
+|---|---|
+| URL, Credential, Host key | as the SFTP exit's: the URL's directory is the one looked at |
+| Pattern (`pattern`) | the names taken: `*` (the default), `*.pdf`, `order-*.csv` |
+| Every (`every`) | how often the directory is looked at (`1m` by default), however often the tick comes |
+| After taking (`after`) | `delete` (the default), or `move` to the done directory (`done_dir`: under the URL's directory, or absolute; made if it is not there) |
+| Settle (`settle`) | how long a file is left after it was last changed (`10s` by default) |
+| Files per tick (`max_per_tick`) | at most this many tries at one tick (`20` by default); the rest wait for the next |
+
+## FTP (poll) {#ftp-poll}
+
+The kind `ftp-poll`: as the SFTP poll, over an FTP server, with the TLS and the fingerprint of the FTP exit. Directories are listed with `MLSD` where the server has it, else with `NLST` and the `SIZE` and `MDTM` of each name.
+
 ## On error {#on-error}
 
 A send or a step that fails for good — a refusal, a missing template, the last of its tries — goes along the node's `on_error` edges, drawn dashed, with what reached the node and `$error` and `$error_node` in what the next nodes see. A node without them sends its failures to the manager's default (`docflow.on_error`, `DOCFLOW_ON_ERROR`), unless the job is on an error's way already, so that a notify node that fails does not tell of itself. With neither, the job stops there, aborted. The job is aborted either way: the edges tell, they do not mend.

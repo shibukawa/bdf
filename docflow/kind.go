@@ -107,8 +107,17 @@ type Kind struct {
 	// Discover asks the far side of a node's settings what is there, for
 	// the editor to pick from before the node is saved (the queues of a
 	// CUPS server): POST /api/kinds/<kind>/discover with the settings. A
-	// far side that does not answer is ErrPrint.
+	// far side that does not answer is ErrPrint. Of a kind with Fields,
+	// an object it answers fills the fields of the same keys in the
+	// editor (an SFTP server's host key).
 	Discover func(ctx context.Context, m *Manager, in Node) (any, error)
+	// Tick is what a node of the kind does at every Tick (an entry that
+	// polls a far side for files: ftp-poll): Manager.Tick calls it for
+	// every node of the kind, as often as it is called itself, on any
+	// instance. What the kind keeps between ticks (when it last polled,
+	// what it saw) is the node's KindState; what it did goes in the
+	// report.
+	Tick func(ctx context.Context, m *Manager, n *Node, rep *TickReport) error
 
 	// What the editor and the manual show of the kind, and the settings
 	// of a kind of its own (fields.go). Titles is the kind as it is said,
