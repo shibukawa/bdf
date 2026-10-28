@@ -311,3 +311,63 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
       - run: npx playwright-core install chromium
       - run: npm run test:browser
+  wasm:
+    # The wasm converters of the npm packages are otherwise compiled by
+    # TinyGo only in publish.yml, at a tag: pdfcpu 0.16.3 opened files under
+    # os.Root, which TinyGo lacks, and the tag of v0.2.0 was the first build
+    # to meet it. This compiles the smallest preset (PDF + EPUB) the same
+    # way, unless every file that changed is one that cannot reach it.
+    if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # HEAD^1: the base of a pull request's merge commit, or the commit before a push
+      - id: changed
+        name: what changed can reach the wasm converters
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$(git rev-parse HEAD^1)" != "$BEFORE" ]; then
+            echo "not one commit on top of the last push: building"
+            echo build=true >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          build=false
+          while IFS= read -r f; do
+            case "$f" in
+              # the build itself, under directories skipped below
+              examples/common/build.mjs | tools/build-npm-converters.mjs) ;;
+              # other programs and modules, tests, documents, and the
+              # TypeScript packages and presets this job does not build
+              docflow/* | print/* | cmd/bdf/* | cmd/docflow/* | examples/* | tools/* | \
+              docs/* | site/* | test/* | testdata/* | */testdata/* | *_test.go | *.md | \
+              .knowledge/* | knowledge-inputs/* | \
+              packages/core/* | packages/render/* | packages/viewer/* | packages/convert-office/* | packages/convert-all/*)
+                continue ;;
+            esac
+            echo "$f"
+            build=true
+          done < <(git diff --name-only HEAD^1 HEAD)
+          if [ "$build" = false ]; then echo "nothing that reaches the wasm converters changed"; fi
+          echo "build=$build" >>"$GITHUB_OUTPUT"
+      # the Go and TinyGo of publish.yml, whose build this is: change them together
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.3"
+          cache: false # TinyGo builds without GOCACHE, and it fetches only the modules of the preset
+      - if: steps.changed.outputs.build == 'true'
+        uses: acifani/setup-tinygo@v3
+        with:
+          tinygo-version: "0.42.0"
+          install-binaryen: false
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - if: steps.changed.outputs.build == 'true'
+        run: npm ci
+      - if: steps.changed.outputs.build == 'true'
+        run: npm run build:wasm -- --preset pdf-epub

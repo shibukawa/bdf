@@ -122,6 +122,8 @@ Publish `@bdfkit/convert`, the chosen preset, `@bdfkit/viewer`, `@bdfkit/render`
 
 `.github/workflows/publish.yml` publishes all seven packages when a `v*` tag is pushed. It checks that the tag version matches every package, runs the TypeScript and Wasm builds and tests, inspects the package tarballs, and then publishes in dependency order.
 
+`.github/workflows/ci.yml` compiles the PDF + EPUB preset with the same TinyGo on pull requests and pushes that touch the Go code, `go.mod` or the build scripts, so a dependency TinyGo cannot compile is seen before a tag, not by the release.
+
 Publish the first release locally, then configure npm Trusted Publishers for the seven packages. Log in to npm on the release machine and publish the packages in dependency order:
 
 ```sh
