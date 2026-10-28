@@ -143,7 +143,10 @@ export async function patchGoldmark(dir) {
  * for this build and provide the same 160-bit random, unpadded base32
  * suffix in its two file-writing helpers. Its browser HTTP transport also
  * lacks ForceAttemptHTTP2 and os.SameFile. File identity checks are rejected
- * in this in-memory browser converter. The module cache is never edited.
+ * in this in-memory browser converter. TinyGo has no os.Root either (0.43
+ * included), which pdfcpu 0.16.3 opens local images of an image box under;
+ * pdfcpu refuses those on js anyway, so the copy refuses them without it.
+ * The module cache is never edited.
  */
 export async function patchPdfcpuForTinyGo(dir, mod) {
   const { Dir: src } = JSON.parse((await execFile("go", ["mod", "download", "-json", "github.com/pdfcpu/pdfcpu"], { cwd: root })).stdout);
@@ -188,6 +191,34 @@ import "os"
 
 func tinygoSameFile(a, b os.FileInfo) bool {
     panic("filesystem identity checks are unavailable in the TinyGo browser converter")
+}
+`);
+  }
+  {
+    // imageBoxLocal.go confines local images of an image box with os.Root,
+    // which TinyGo lacks. The same file already refuses them on js, so the
+    // copy keeps that answer and drops the os.Root path.
+    const name = "pkg/pdfcpu/primitives/imageBoxLocal.go";
+    const file = join(dst, name);
+    const code = await readFile(file, "utf8");
+    if (code.split("os.OpenRoot(").length !== 2 || code.split("func (ib *ImageBox) localResource() (io.ReadCloser, error) {").length !== 2) {
+      throw new Error(`${name}: not the one os.OpenRoot call and localResource method the TinyGo copy replaces`);
+    }
+    await writeFile(file, `package primitives
+
+import (
+\t"fmt"
+\t"io"
+\t"os"
+)
+
+// localResource is the TinyGo copy's: os.Root, which pdfcpu confines local
+// images with, is not in TinyGo, and pdfcpu refuses them on js anyway.
+func (ib *ImageBox) localResource() (io.ReadCloser, error) {
+\tif ib.Src == "" {
+\t\treturn nil, nil
+\t}
+\treturn nil, fmt.Errorf("confined local images are unavailable in the TinyGo browser converter: %w", os.ErrPermission)
 }
 `);
   }
